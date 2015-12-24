@@ -77,7 +77,7 @@ int main(int argc, char **argv) {
     struct ip_icmp reply;
     uint16_t id = (uint16_t)getpid();
     uint16_t seq = 0;
-    ssize_t bytes_transfered;
+    ssize_t bytes_transferred;
     
     if (argc < 2) {
         fprintf(stderr, "Usage: ping <host>\n");
@@ -135,13 +135,13 @@ int main(int argc, char **argv) {
         request.seq = htons(seq);
         request.checksum = compute_checksum(&request, sizeof(request));
         
-        bytes_transfered = sendto(sockfd,
-                                  &request,
-                                  sizeof(request),
-                                  0,
-                                  (struct sockaddr *)&sockaddr,
-                                  sockaddr.sin_len);
-        if (bytes_transfered < 0) {
+        bytes_transferred = sendto(sockfd,
+                                   &request,
+                                   sizeof(request),
+                                   0,
+                                   (struct sockaddr *)&sockaddr,
+                                   sockaddr.sin_len);
+        if (bytes_transferred < 0) {
             fprintf(stderr, "Error: sendto: %s\n", strerror(errno));
             exit(EXIT_FAILURE);
         }
@@ -156,13 +156,13 @@ int main(int argc, char **argv) {
             delay = TIMEVAL_TO_MSEC(cur_time) - TIMEVAL_TO_MSEC(start_time);
             
             memset(&reply, 0, sizeof(reply));
-            bytes_transfered = recvfrom(sockfd,
-                                        &reply,
-                                        sizeof(reply),
-                                        0,
-                                        NULL,
-                                        NULL);
-            if (bytes_transfered < 0) {
+            bytes_transferred = recvfrom(sockfd,
+                                         &reply,
+                                         sizeof(reply),
+                                         0,
+                                         NULL,
+                                         NULL);
+            if (bytes_transferred < 0) {
                 if (errno != EAGAIN) {
                     fprintf(stderr, "Error: recvfrom: %s\n", strerror(errno));
                     exit(EXIT_FAILURE);
