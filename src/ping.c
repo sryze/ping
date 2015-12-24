@@ -1,12 +1,12 @@
 #include <errno.h>
-#include <fcntl.h>
+#include <fcntl.h>            /* fcntl() */
 #include <netdb.h>            /* getaddrinfo() */
-#include <netinet/in.h>       /* IPPROTO_ICMP */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>        /* inet_XtoY() */
+#include <netinet/in.h>       /* IPPROTO_ICMP */
 #include <netinet/ip.h>       /* struct ip */
 #include <netinet/ip_icmp.h>  /* struct icmp */
 #include <sys/socket.h>
@@ -16,6 +16,9 @@
 #define REQUEST_TIMEOUT 1000
 #define TIMEVAL_TO_MSEC(tv) ((double)(tv.tv_sec * 1000.0 + tv.tv_usec / 1000.0))
 
+/* Simply combines IP and ICMP headers in one struct for convenience.
+ * Will be used with recvfrom().
+ */
 struct ip_icmp {
     struct ip   ip;
     struct icmp icmp;
@@ -194,6 +197,6 @@ int main(int argc, char **argv) {
             }
         }
 
-        usleep(1000000.0 - delay * 1000);
+        usleep(1000000 - delay * 1000);
     }
 }
