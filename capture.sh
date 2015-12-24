@@ -1,2 +1,2 @@
 #!/bin/sh
-sudo tcpdump -i en1 -w ping.pcap -v icmp
+tcpdump -i any -w ping.pcap -v icmp
