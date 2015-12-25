@@ -13,7 +13,9 @@
 #include <sys/time.h>
 #include <sys/types.h>
 
-#define REQUEST_TIMEOUT 1000
+#define REQUEST_TIMEOUT  1000
+#define REQUEST_INTERVAL 1000
+
 #define TIMEVAL_TO_MSEC(tv) ((double)(tv.tv_sec * 1000.0 + tv.tv_usec / 1000.0))
 
 #pragma pack(push, 1)
@@ -201,6 +203,6 @@ int main(int argc, char **argv) {
             }
         }
 
-        usleep(1000000 - delay * 1000);
+        usleep((REQUEST_INTERVAL - delay) * 1000);
     }
 }
