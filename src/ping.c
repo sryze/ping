@@ -172,7 +172,7 @@ int main(int argc, char **argv) {
                     fprintf(stderr, "Error: recvfrom: %s\n", strerror(errno));
                     exit(EXIT_FAILURE);
                 } else if (delay > REQUEST_TIMEOUT) {
-                    printf("Timed out\n");
+                    printf("Request timed out\n");
                     break;
                 }
             } else {
