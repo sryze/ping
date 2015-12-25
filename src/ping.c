@@ -16,6 +16,8 @@
 #define REQUEST_TIMEOUT 1000
 #define TIMEVAL_TO_MSEC(tv) ((double)(tv.tv_sec * 1000.0 + tv.tv_usec / 1000.0))
 
+#pragma pack(push, 1)
+
 /* Simply combines IP and ICMP headers in one struct for convenience.
  * Will be used with recvfrom().
  */
@@ -23,6 +25,8 @@ struct ip_icmp {
     struct ip   ip;
     struct icmp icmp;
 };
+
+#pragma pack(pop)
 
 /*
  * Computes the checksum of a packet as defined by RFC 1071:
