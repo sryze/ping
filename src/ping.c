@@ -188,7 +188,7 @@ int main(int argc, char **argv) {
 
                 printf("Received ICMP echo reply from %s: seq=%d, time=%.3f ms",
                        addrstr,
-                       seq,
+                       ntohs(reply.icmp.icmp_seq),
                        delay);
 
                 if (checksum != expected_checksum) {
