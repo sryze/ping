@@ -13,12 +13,28 @@
 #include <sys/time.h>
 #include <sys/types.h>
 
+#ifndef ICMP_ECHO
+#define ICMP_ECHO 8
+#endif
+
 #define REQUEST_TIMEOUT  1000
 #define REQUEST_INTERVAL 1000
 
 #define TIMEVAL_TO_MSEC(tv) ((double)(tv.tv_sec * 1000.0 + tv.tv_usec / 1000.0))
 
 #pragma pack(push, 1)
+
+#ifdef __CYGWIN__
+
+struct icmp {
+    uint8_t  icmp_type;
+    uint8_t  icmp_code;
+    uint16_t icmp_cksum;
+    uint16_t icmp_id;
+    uint16_t icmp_seq;
+};
+
+#endif /* __CYGWIN__ */
 
 /* Simply combines IP and ICMP headers in one struct for convenience.
  * Will be used with recvfrom().
