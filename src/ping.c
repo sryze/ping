@@ -16,6 +16,9 @@
 #ifndef ICMP_ECHO
 #define ICMP_ECHO 8
 #endif
+#ifndef ICMP_ECHO_REPLY
+#define ICMP_ECHO_REPLY 0
+#endif
 
 #define REQUEST_TIMEOUT  1000000
 #define REQUEST_INTERVAL 1000000
@@ -83,7 +86,8 @@ int main(int argc, char **argv) {
     char addrstr[INET6_ADDRSTRLEN];
     struct timeval start_time;
     struct icmp request;
-    struct ip_icmp reply;
+    struct icmp reply;
+    struct ip_icmp reply_wrapped;
     uint16_t id = (uint16_t)getpid();
     uint16_t seq = 0;
     int bytes_transferred;
@@ -178,10 +182,10 @@ int main(int argc, char **argv) {
             gettimeofday(&cur_time, NULL);
             delay = TIMEVAL_TO_USEC(cur_time) - TIMEVAL_TO_USEC(start_time);
 
-            memset(&reply, 0, sizeof(reply));
+            memset(&reply_wrapped, 0, sizeof(reply_wrapped));
             bytes_transferred = recvfrom(sockfd,
-                                         &reply,
-                                         sizeof(reply),
+                                         &reply_wrapped,
+                                         sizeof(reply_wrapped),
                                          0,
                                          NULL,
                                          NULL);
@@ -198,14 +202,22 @@ int main(int argc, char **argv) {
                 uint16_t checksum;
                 uint16_t expected_checksum;
 
-                checksum = reply.icmp.icmp_cksum;
-                reply.icmp.icmp_cksum = 0;
-                expected_checksum = compute_checksum(&reply.icmp,
-                                                     sizeof(reply.icmp));
+                reply = reply_wrapped.icmp;
+                reply.icmp_cksum = ntohs(reply.icmp_cksum);
+                reply.icmp_id = ntohs(reply.icmp_id);
+                reply.icmp_seq = ntohs(reply.icmp_seq);
+
+                if (reply.icmp_type != ICMP_ECHO_REPLY || reply.icmp_id != id) {
+                    continue;
+                }
+
+                checksum = reply.icmp_cksum;
+                reply.icmp_cksum = 0;
+                expected_checksum = compute_checksum(&reply, sizeof(reply));
 
                 printf("Received ICMP echo reply from %s: seq=%d, time=%.3f ms",
                        addrstr,
-                       ntohs(reply.icmp.icmp_seq),
+                       reply.icmp_seq,
                        delay / 1000.0);
 
                 if (checksum != expected_checksum) {
