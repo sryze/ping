@@ -17,10 +17,10 @@
 #define ICMP_ECHO 8
 #endif
 
-#define REQUEST_TIMEOUT  1000
-#define REQUEST_INTERVAL 1000
+#define REQUEST_TIMEOUT  1000000
+#define REQUEST_INTERVAL 1000000
 
-#define TIMEVAL_TO_MSEC(tv) ((double)(tv.tv_sec * 1000.0 + tv.tv_usec / 1000.0))
+#define TIMEVAL_TO_USEC(tv) (tv.tv_sec * 1000000L + tv.tv_usec)
 
 #pragma pack(push, 1)
 
@@ -148,7 +148,7 @@ int main(int argc, char **argv) {
     }
 
     for (seq = 0; ; seq++) {
-        double delay = 0;
+        long delay = 0;
 
         memset(&request, 0, sizeof(request));
         request.icmp_type = ICMP_ECHO;
@@ -176,7 +176,7 @@ int main(int argc, char **argv) {
             struct timeval cur_time;
 
             gettimeofday(&cur_time, NULL);
-            delay = TIMEVAL_TO_MSEC(cur_time) - TIMEVAL_TO_MSEC(start_time);
+            delay = TIMEVAL_TO_USEC(cur_time) - TIMEVAL_TO_USEC(start_time);
 
             memset(&reply, 0, sizeof(reply));
             bytes_transferred = recvfrom(sockfd,
@@ -189,7 +189,8 @@ int main(int argc, char **argv) {
                 if (errno != EAGAIN) {
                     fprintf(stderr, "Error: recvfrom: %s\n", strerror(errno));
                     exit(EXIT_FAILURE);
-                } else if (delay > REQUEST_TIMEOUT) {
+                }
+                if (delay > REQUEST_TIMEOUT) {
                     printf("Request timed out\n");
                     break;
                 }
@@ -205,7 +206,7 @@ int main(int argc, char **argv) {
                 printf("Received ICMP echo reply from %s: seq=%d, time=%.3f ms",
                        addrstr,
                        ntohs(reply.icmp.icmp_seq),
-                       delay);
+                       delay / 1000.0);
 
                 if (checksum != expected_checksum) {
                     printf(" (checksum mismatch: %x != %x)\n",
@@ -219,6 +220,6 @@ int main(int argc, char **argv) {
             }
         }
 
-        usleep((REQUEST_INTERVAL - delay) * 1000);
+        usleep(REQUEST_INTERVAL - delay);
     }
 }
