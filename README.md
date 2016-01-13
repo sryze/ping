@@ -1,8 +1,8 @@
 ping
 ====
 
-This is a simple implementation of the `ping` command in C. It was done for learning more
-about raw sockets and how ping really works.
+This is a simple implementation of the `ping` command in C. It was created for learning more
+about raw sockets and how ping works.
 
 Example usage:
 
@@ -16,6 +16,8 @@ Sent ICMP echo request to 212.188.10.88
 Received ICMP echo reply from 212.188.10.88: seq=2, time=13.850 ms
 ^C
 ```
+
+`ping` accepts only one argument - the name of the host to ping.
 
 Building
 --------
