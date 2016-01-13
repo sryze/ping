@@ -22,7 +22,7 @@ Received ICMP echo reply from 212.188.10.88: seq=2, time=13.850 ms
 Building
 --------
 
-To build ping you'll need a C89 compiler and CMake. Supported platform include
+To build ping you'll need a C89 compiler and CMake. Supported platforms include
 Linux, Mac OS X and Cygwin. 
 
 After you cloned this repo run the following commands to build an executable:
