@@ -23,7 +23,7 @@ Building
 --------
 
 To build ping you'll need a C89 compiler and CMake. Supported platforms include
-Linux, Mac OS X and Cygwin. 
+Linux, Mac OS X and Cygwin.
 
 After you cloned this repo run the following commands to build an executable:
 
@@ -37,7 +37,7 @@ make
 Running
 -------
 
-Use of raw sockets usually requires administrative priviliges, therefore you'll
+Use of raw sockets usually requires administrative privileges, therefore you'll
 need to run `ping` as root:
 
 ```sh
@@ -55,3 +55,13 @@ sudo chown root ./ping
 
 After starting `ping`, it will run indefinitely until you interrupt it, e.g.
 by doing `Ctrl-C` in the terminal.
+
+Scripts
+-------
+
+The `scripts` directory contains a couple of scripts to aid debugging:
+
+* `capture.sh` - captures ICMP traffic with `tcpdump` and saves it to
+  `ping.pcap` (needs to be run as root)
+* `dump.sh` - prints the contents of `ping.pcap` in a nice form (`tcpdump`
+   may actually display helpful errors there, like a miscalculated checksum)
