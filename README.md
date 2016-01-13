@@ -1,8 +1,8 @@
 ping
 ====
 
-This is a simple implementation of the `ping` command in C. It was created for
-learning more about raw sockets and how ping works.
+This is a rather basic implementation of the `ping` command in C. It was
+created for learning more about raw sockets and how ping works (and for fun).
 
 Example usage:
 
