@@ -37,16 +37,15 @@ make
 Running
 -------
 
-Use of raw sockets usually requires administrative privileges, therefore you'll
-need to run `ping` as root:
+Use of raw sockets usually requires administrative privileges, therefore you
+will need to run `ping` as root:
 
 ```sh
 sudo ./ping google.com
 ```
 
-There are way to make it runnable without root privileges but depends on your
-system.  In particular, that can be achieved by setting the `suid` bit on the
-executable file and changing its owner to `root`:
+There is also a way to make it run without typing `sudo` every time: set the
+`suid` bit on the executable and change its owner to `root`:
 
 ```sh
 sudo chmod +s ./ping
