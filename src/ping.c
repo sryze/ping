@@ -13,6 +13,7 @@
     #include <unistd.h>
     #include <arpa/inet.h>       /* inet_XtoY() */
     #include <netinet/in.h>      /* IPPROTO_ICMP */
+    #include <netinet/ip.h>
     #include <netinet/ip_icmp.h> /* struct icmp */
     #include <sys/socket.h>
     #include <sys/time.h>
