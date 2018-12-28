@@ -1,3 +1,6 @@
+.vs
+.vscode
+.DS_Store
 build
 *.pcap
-
+*.swp
