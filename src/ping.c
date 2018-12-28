@@ -1,74 +1,72 @@
-#include <errno.h>
-#include <fcntl.h>            /* fcntl() */
-#include <netdb.h>            /* getaddrinfo() */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <arpa/inet.h>        /* inet_XtoY() */
-#include <netinet/in.h>       /* IPPROTO_ICMP */
-#include <netinet/ip.h>       /* struct ip */
-#include <netinet/ip_icmp.h>  /* struct icmp */
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <sys/types.h>
+#ifdef _WIN32
+    #include <process.h>         /* _getpid() */
+    #include <winsock2.h>
+    #include <ws2tcpip.h>        /* getaddrinfo() */
+    #define getpid _getpid
+#else
+    #include <errno.h>
+    #include <netdb.h>           /* getaddrinfo() */
+    #include <stdint.h>
+    #include <unistd.h>
+    #include <arpa/inet.h>       /* inet_XtoY() */
+    #include <netinet/in.h>      /* IPPROTO_ICMP */
+    #include <netinet/ip_icmp.h> /* struct icmp */
+    #include <sys/socket.h>
+    #include <sys/time.h>
+    #include <sys/types.h>
+#endif
+
+#define MIN_IP_HEADER_SIZE 20
+#define MAX_IP_HEADER_SIZE 60
 
 #ifndef ICMP_ECHO
-#define ICMP_ECHO 8
+    #define ICMP_ECHO 8
 #endif
 #ifndef ICMP_ECHO_REPLY
-#define ICMP_ECHO_REPLY 0
+    #define ICMP_ECHO_REPLY 0
 #endif
 
-#define REQUEST_TIMEOUT  1000000
-#define REQUEST_INTERVAL 1000000
-
-#define TIMEVAL_TO_USEC(tv) (tv.tv_sec * 1000000L + tv.tv_usec)
+#define REQUEST_TIMEOUT  1000
+#define REQUEST_INTERVAL 1000
 
 #pragma pack(push, 1)
 
-#ifdef __CYGWIN__
-
-struct icmp {
-    uint8_t  icmp_type;
-    uint8_t  icmp_code;
-    uint16_t icmp_cksum;
-    uint16_t icmp_id;
-    uint16_t icmp_seq;
-};
-
-#endif /* __CYGWIN__ */
-
-/* Simply combines IP and ICMP headers in one struct for convenience.
- * Will be used with recvfrom().
- */
-struct ip_icmp {
-    struct ip   ip;
-    struct icmp icmp;
-};
+#ifdef _WIN32
+    #ifdef _MSC_VER
+        typedef unsigned __int8 uint8_t;
+        typedef unsigned __int16 uint16_t;
+        typedef unsigned __int32 uint32_t;
+        typedef unsigned __int64 uint64_t;
+    #endif
+    struct icmp {
+        uint8_t  icmp_type;
+        uint8_t  icmp_code;
+        uint16_t icmp_cksum;
+        uint16_t icmp_id;
+        uint16_t icmp_seq;
+    };
+#endif
 
 #pragma pack(pop)
 
 /*
- * Computes the checksum of a packet as defined by RFC 1071:
- * http://tools.ietf.org/html/rfc1071
+ * RFC 1071 - http://tools.ietf.org/html/rfc1071
  */
-uint16_t compute_checksum(void *buf, size_t size) {
+static uint16_t compute_checksum(const char *buf, size_t size) {
     size_t i;
     uint64_t sum = 0;
 
     for (i = 0; i < size; i += 2) {
-        /*  This is the inner loop */
         sum += *(uint16_t *)buf;
-        buf = (uint8_t *)buf + 2;
+        buf += 2;
     }
-
-    /*  Add left-over byte, if any */
     if (size - i > 0) {
         sum += *(uint8_t *)buf;
     }
 
-    /*  Fold 32-bit sum to 16 bits */
     while ((sum >> 16) != 0) {
         sum = (sum & 0xffff) + (sum >> 16);
     }
@@ -76,36 +74,104 @@ uint16_t compute_checksum(void *buf, size_t size) {
     return (uint16_t)~sum;
 }
 
+#ifdef _WIN32
+    static void fprint_win32_error(FILE *stream, int error) {
+        char *message = NULL;
+        DWORD format_flags = FORMAT_MESSAGE_FROM_SYSTEM
+            | FORMAT_MESSAGE_IGNORE_INSERTS
+            | FORMAT_MESSAGE_ALLOCATE_BUFFER
+            | FORMAT_MESSAGE_MAX_WIDTH_MASK;
+        DWORD result;
+
+        result = FormatMessageA(
+            format_flags,
+            NULL,
+            error,
+            0,
+            (char *)&message,
+            0,
+            NULL);
+        if (result > 0) {
+            fprintf(stream, "%s\n", message);
+            LocalFree(message);
+        } else {
+            fprintf(stream, "Unknown error\n");
+        }
+    }
+#endif
+
+static void fprint_net_error(FILE *stream) {
+#ifdef _WIN32
+    fprint_win32_error(stream, GetLastError());
+#else
+    fprintf(stream, "%s\n", strerror(errno));
+#endif
+}
+
+static void sleep_ms(int milliseconds) {
+#ifdef _WIN32
+    Sleep(milliseconds);
+#else
+    usleep(milliseconds * 1000);
+#endif
+}
+
+static uint64_t get_time(void) {
+#ifdef _WIN32
+    /* This does not seem to work correctly, I have no idea why... */
+    LARGE_INTEGER count;
+    LARGE_INTEGER frequency;
+    if (QueryPerformanceCounter(&count) == 0
+        || QueryPerformanceFrequency(&frequency) == 0) {
+        return 0;
+    }
+    return count.QuadPart * 1000000 / frequency.QuadPart;
+#else
+    struct timeval now;
+    return gettimeofday(&now, NULL) != 0
+        ? 0
+        : now.tv_sec * 1000000 + now.tv_usec;
+#endif
+}
+
 int main(int argc, char **argv) {
-    char *host;
+#ifdef _WIN32
+    int ws2_error;
+    WSADATA ws2_data;
+#endif
+    char *hostname;
     int sockfd;
     int error;
     struct addrinfo addrinfo_hints;
     struct addrinfo *addrinfo_head;
     struct addrinfo *addrinfo;
-    char addrstr[INET6_ADDRSTRLEN];
-    struct timeval start_time;
-    struct icmp request;
-    struct icmp reply;
-    struct ip_icmp reply_wrapped;
+    char addrstr[INET6_ADDRSTRLEN] = "<unknown>";
+    struct timeval timeout;
     uint16_t id = (uint16_t)getpid();
-    uint16_t seq = 0;
-    int bytes_transferred;
+    uint16_t seq;
 
     if (argc < 2) {
-        fprintf(stderr, "Usage: ping <host>\n");
+        fprintf(stderr, "Usage: ping <destination>\n");
         exit(EXIT_FAILURE);
     }
 
-    host = argv[1];
+#ifdef _WIN32
+    ws2_error = WSAStartup(MAKEWORD(2, 2), &ws2_data);
+    if (ws2_error != 0) {
+        fprintf(stderr, "Failed to initialize WinSock2: %d\n", ws2_error);
+        return FALSE;
+    }
+#endif
+
+    hostname = argv[1];
     memset(&addrinfo_hints, 0, sizeof(addrinfo_hints));
     addrinfo_hints.ai_family = AF_INET;
     addrinfo_hints.ai_socktype = SOCK_RAW;
     addrinfo_hints.ai_protocol = IPPROTO_ICMP;
 
-    error = getaddrinfo(host, NULL, &addrinfo_hints, &addrinfo_head);
+    error = getaddrinfo(hostname, NULL, &addrinfo_hints, &addrinfo_head);
     if (error != 0) {
-        fprintf(stderr, "Error: getaddrinfo: %s\n", gai_strerror(error));
+        fprintf(stderr, "%s\n", gai_strerror(error));
         exit(EXIT_FAILURE);
     }
 
@@ -115,8 +181,8 @@ int main(int argc, char **argv) {
         sockfd = socket(addrinfo->ai_family,
                         addrinfo->ai_socktype,
                         addrinfo->ai_protocol);
-        if (sockfd == -1) {
-            fprintf(stderr, "Error: socket: %s\n", strerror(errno));
+        if (sockfd < 0) {
+            fprint_net_error(stderr);
             continue;
         }
 
@@ -125,7 +191,7 @@ int main(int argc, char **argv) {
     }
 
     if (addrinfo == NULL) {
-        fprintf(stderr, "Error: Could not connect to %s\n", host);
+        fprintf(stderr, "%s\n", hostname);
         exit(EXIT_FAILURE);
     }
 
@@ -142,17 +208,48 @@ int main(int argc, char **argv) {
                       addrstr,
                       sizeof(addrstr));
             break;
-        default:
-            strncpy(addrstr, "<unknown address>", sizeof(addrstr));
     }
 
-    if (fcntl(sockfd, F_SETFL, O_NONBLOCK) == -1) {
-        fprintf(stderr, "Error: fcntl: %s\n", strerror(errno));
+    timeout.tv_sec = REQUEST_TIMEOUT / 1000;
+    timeout.tv_usec = (REQUEST_TIMEOUT % 1000) * 1000;
+
+    if (setsockopt(sockfd,
+                   SOL_SOCKET,
+                   SO_RCVTIMEO,
+                   (const char *)&timeout,
+                   sizeof(timeout)) < 0) {
+        fprint_net_error(stderr);
+        exit(EXIT_FAILURE);
+    }
+
+    if (setsockopt(sockfd,
+                   SOL_SOCKET,
+                   SO_SNDTIMEO,
+                   (const char *)&timeout,
+                   sizeof(timeout)) < 0) {
+        fprint_net_error(stderr);
         exit(EXIT_FAILURE);
     }
 
     for (seq = 0; ; seq++) {
-        long delay = 0;
+        struct icmp request;
+        int send_result;
+        char recv_buf[MAX_IP_HEADER_SIZE + sizeof(struct icmp)];
+        int recv_result;
+        socklen_t addrlen;
+        uint8_t ip_vhl;
+        uint8_t ip_header_size;
+        struct icmp *reply;
+        uint64_t start_time;
+        uint64_t delay;
+        uint16_t checksum;
+        uint16_t expected_checksum;
+
+        if (seq > 0) {
+            sleep_ms(REQUEST_INTERVAL);
+        }
+
+        start_time = get_time();
 
         memset(&request, 0, sizeof(request));
         request.icmp_type = ICMP_ECHO;
@@ -160,78 +257,74 @@ int main(int argc, char **argv) {
         request.icmp_cksum = 0;
         request.icmp_id = htons(id);
         request.icmp_seq = htons(seq);
-        request.icmp_cksum = compute_checksum(&request, sizeof(request));
+        request.icmp_cksum =
+            compute_checksum((const char *)&request, (int)sizeof(request));
 
-        bytes_transferred = sendto(sockfd,
-                                   &request,
-                                   sizeof(request),
-                                   0,
-                                   addrinfo->ai_addr,
-                                   addrinfo->ai_addrlen);
-        if (bytes_transferred < 0) {
-            fprintf(stderr, "Error: sendto: %s\n", strerror(errno));
+        send_result = sendto(sockfd,
+                             (const char *)&request,
+                             sizeof(request),
+                             0,
+                             addrinfo->ai_addr,
+                             addrinfo->ai_addrlen);
+        if (send_result < 0) {
+            fprint_net_error(stderr);
             exit(EXIT_FAILURE);
         }
 
         printf("Sent ICMP echo request to %s\n", addrstr);
-        gettimeofday(&start_time, NULL);
 
-        for (;;) {
-            struct timeval cur_time;
-
-            gettimeofday(&cur_time, NULL);
-            delay = TIMEVAL_TO_USEC(cur_time) - TIMEVAL_TO_USEC(start_time);
-
-            memset(&reply_wrapped, 0, sizeof(reply_wrapped));
-            bytes_transferred = recvfrom(sockfd,
-                                         &reply_wrapped,
-                                         sizeof(reply_wrapped),
-                                         0,
-                                         NULL,
-                                         NULL);
-            if (bytes_transferred < 0) {
-                if (errno != EAGAIN) {
-                    fprintf(stderr, "Error: recvfrom: %s\n", strerror(errno));
-                    exit(EXIT_FAILURE);
-                }
-                if (delay > REQUEST_TIMEOUT) {
-                    printf("Request timed out\n");
-                    break;
-                }
+        memset(&recv_buf, 0, sizeof(recv_buf));
+        addrlen = addrinfo->ai_addrlen;
+        recv_result = recvfrom(sockfd,
+                               recv_buf,
+                               MAX_IP_HEADER_SIZE + sizeof(struct icmp),
+                               0,
+                               addrinfo->ai_addr,
+                               &addrlen);
+        if (recv_result <= 0) {
+#ifdef _WIN32
+            if (GetLastError() == WSAETIMEDOUT) {
+#else
+            if (errno == ETIMEDOUT) {
+#endif
+                fprintf(stderr, "Request timed out\n");
             } else {
-                uint16_t checksum;
-                uint16_t expected_checksum;
-
-                reply = reply_wrapped.icmp;
-                reply.icmp_cksum = ntohs(reply.icmp_cksum);
-                reply.icmp_id = ntohs(reply.icmp_id);
-                reply.icmp_seq = ntohs(reply.icmp_seq);
-
-                if (reply.icmp_type != ICMP_ECHO_REPLY || reply.icmp_id != id) {
-                    continue;
-                }
-
-                checksum = reply.icmp_cksum;
-                reply.icmp_cksum = 0;
-                expected_checksum = compute_checksum(&reply, sizeof(reply));
-
-                printf("Received ICMP echo reply from %s: seq=%d, time=%.3f ms",
-                       addrstr,
-                       reply.icmp_seq,
-                       delay / 1000.0);
-
-                if (checksum != expected_checksum) {
-                    printf(" (checksum mismatch: %x != %x)\n",
-                           checksum,
-                           expected_checksum);
-                } else {
-                    printf("\n");
-                }
-
-                break;
+                fprint_net_error(stderr);
             }
+            continue;
         }
 
-        usleep(REQUEST_INTERVAL - delay);
+        delay = get_time() - start_time;
+
+        /* VHL = version + header length; each of them is 4 bits. */
+        ip_vhl = *(uint8_t *)recv_buf;
+        ip_header_size = (ip_vhl & 0x0F) * 4;
+
+        reply = (struct icmp *)(recv_buf + ip_header_size);
+        reply->icmp_cksum = ntohs(reply->icmp_cksum);
+        reply->icmp_id = ntohs(reply->icmp_id);
+        reply->icmp_seq = ntohs(reply->icmp_seq);
+
+        if (reply->icmp_type != ICMP_ECHO_REPLY || reply->icmp_id != id) {
+            continue;
+        }
+
+        checksum = reply->icmp_cksum;
+        reply->icmp_cksum = 0;
+        expected_checksum =
+            compute_checksum((const char *)reply, (int)sizeof(*reply));
+
+        printf("Received ICMP echo reply from %s: seq=%d, time=%.3f ms",
+               addrstr,
+               reply->icmp_seq,
+               delay / 1000.0);
+
+        if (checksum != expected_checksum) {
+            printf(" (checksum mismatch: %x != %x)\n",
+                    checksum,
+                    expected_checksum);
+        } else {
+            printf("\n");
+        }
     }
 }
