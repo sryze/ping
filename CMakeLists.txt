@@ -1,5 +1,5 @@
+project(ping C)
 cmake_minimum_required(VERSION 3.0)
-project(ping)
 
 add_executable(ping src/ping.c)
 
