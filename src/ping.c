@@ -118,7 +118,6 @@ static void sleep_ms(int milliseconds) {
 
 static uint64_t get_time(void) {
 #ifdef _WIN32
-    /* This does not seem to work correctly, I have no idea why... */
     LARGE_INTEGER count;
     LARGE_INTEGER frequency;
     if (QueryPerformanceCounter(&count) == 0
@@ -138,6 +137,9 @@ int main(int argc, char **argv) {
 #ifdef _WIN32
     int ws2_error;
     WSADATA ws2_data;
+    DWORD timeout;
+#else
+    struct timeval timeout;
 #endif
     char *hostname;
     int sockfd;
@@ -146,7 +148,6 @@ int main(int argc, char **argv) {
     struct addrinfo *addrinfo_head;
     struct addrinfo *addrinfo;
     char addrstr[INET6_ADDRSTRLEN] = "<unknown>";
-    struct timeval timeout;
     uint16_t id = (uint16_t)getpid();
     uint16_t seq;
 
@@ -210,8 +211,12 @@ int main(int argc, char **argv) {
             break;
     }
 
+#ifdef _WIN32
+    timeout = REQUEST_TIMEOUT;
+#else
     timeout.tv_sec = REQUEST_TIMEOUT / 1000;
     timeout.tv_usec = (REQUEST_TIMEOUT % 1000) * 1000;
+#endif
 
     if (setsockopt(sockfd,
                    SOL_SOCKET,
@@ -221,7 +226,6 @@ int main(int argc, char **argv) {
         fprint_net_error(stderr);
         exit(EXIT_FAILURE);
     }
-
     if (setsockopt(sockfd,
                    SOL_SOCKET,
                    SO_SNDTIMEO,
