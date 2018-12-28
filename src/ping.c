@@ -26,8 +26,14 @@
 #ifndef ICMP_ECHO
     #define ICMP_ECHO 8
 #endif
+#ifndef ICMP_ECHO6
+    #define ICMP6_ECHO 128
+#endif
 #ifndef ICMP_ECHO_REPLY
     #define ICMP_ECHO_REPLY 0
+#endif
+#ifndef ICMP_ECHO_REPLY6
+    #define ICMP6_ECHO_REPLY 129
 #endif
 
 #define REQUEST_TIMEOUT  1000
@@ -169,7 +175,6 @@ int main(int argc, char **argv) {
 
     hostname = argv[1];
     memset(&addrinfo_hints, 0, sizeof(addrinfo_hints));
-    addrinfo_hints.ai_family = AF_INET;
     addrinfo_hints.ai_socktype = SOCK_RAW;
     addrinfo_hints.ai_protocol = IPPROTO_ICMP;
 
@@ -195,19 +200,12 @@ int main(int argc, char **argv) {
         exit(EXIT_FAILURE);
     }
 
-    switch (addrinfo->ai_family) {
-        case AF_INET:
-            inet_ntop(AF_INET,
-                      &((struct sockaddr_in *)addrinfo->ai_addr)->sin_addr,
-                      addrstr,
-                      sizeof(addrstr));
-            break;
-        case AF_INET6:
-            inet_ntop(AF_INET6,
-                      &((struct sockaddr_in6 *)addrinfo->ai_addr)->sin6_addr,
-                      addrstr,
-                      sizeof(addrstr));
-            break;
+    if (inet_ntop(addrinfo->ai_family,
+                  addrinfo->ai_addr->sa_data,
+                  addrstr,
+                  sizeof(addrstr)) == NULL) {
+        fprint_net_error(stderr, "inet_ntop");
+        exit(EXIT_FAILURE);
     }
 
 #ifdef _WIN32
@@ -240,6 +238,7 @@ int main(int argc, char **argv) {
         char recv_buf[MAX_IP_HEADER_SIZE + sizeof(struct icmp)];
         int recv_result;
         socklen_t addrlen;
+        uint8_t packet_size;
         uint8_t ip_vhl;
         uint8_t ip_header_size;
         struct icmp *reply;
@@ -255,7 +254,8 @@ int main(int argc, char **argv) {
         start_time = get_time();
 
         memset(&request, 0, sizeof(request));
-        request.icmp_type = ICMP_ECHO;
+        request.icmp_type =
+            addrinfo->ai_family == AF_INET6 ? ICMP6_ECHO : ICMP_ECHO;
         request.icmp_code = 0;
         request.icmp_cksum = 0;
         request.icmp_id = htons(id);
@@ -276,11 +276,18 @@ int main(int argc, char **argv) {
 
         printf("Sent ICMP echo request to %s\n", addrstr);
 
+        if (addrinfo->ai_family == AF_INET6) {
+            /* When using IPv6 we don't receive IP headers in recvfrom(). */
+            packet_size = sizeof(struct icmp);
+        } else {
+            packet_size = MAX_IP_HEADER_SIZE + sizeof(struct icmp);
+        }
+
         memset(&recv_buf, 0, sizeof(recv_buf));
         addrlen = addrinfo->ai_addrlen;
         recv_result = recvfrom(sockfd,
                                recv_buf,
-                               MAX_IP_HEADER_SIZE + sizeof(struct icmp),
+                               packet_size,
                                0,
                                addrinfo->ai_addr,
                                &addrlen);
@@ -299,16 +306,29 @@ int main(int argc, char **argv) {
 
         delay = get_time() - start_time;
 
-        /* VHL = version + header length; each of them is 4 bits. */
-        ip_vhl = *(uint8_t *)recv_buf;
-        ip_header_size = (ip_vhl & 0x0F) * 4;
+        if (addrinfo->ai_family == AF_INET6) {
+            ip_header_size = 0;
+        } else {
+            /* In contrast to IPv6, for IPv4 connections we do receive IP headers in
+             * incoming datagrams.
+             *
+             * IP.VHL = version (4 bits) + header length (lower 4 bits).
+             */
+            ip_vhl = *(uint8_t *)recv_buf;
+            ip_header_size = (ip_vhl & 0x0F) * 4;
+        }
 
         reply = (struct icmp *)(recv_buf + ip_header_size);
         reply->icmp_cksum = ntohs(reply->icmp_cksum);
         reply->icmp_id = ntohs(reply->icmp_id);
         reply->icmp_seq = ntohs(reply->icmp_seq);
-
-        if (reply->icmp_type != ICMP_ECHO_REPLY || reply->icmp_id != id) {
+        
+        if (reply->icmp_id != id
+            || (addrinfo->ai_family == AF_INET && reply->icmp_type != ICMP_ECHO_REPLY)
+            || (addrinfo->ai_family == AF_INET6
+                && reply->icmp_type != ICMP6_ECHO
+                && reply->icmp_type != ICMP6_ECHO_REPLY)) {
+            fprintf(stderr, "Invalid ICMP echo reply received\n");
             continue;
         }
 
