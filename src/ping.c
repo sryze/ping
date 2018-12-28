@@ -41,7 +41,7 @@
 
 #ifdef _WIN32
     #define getpid _getpid
-    #define usleep(x) Sleep(x / 1000)
+    #define usleep(usec) Sleep((usec) / 1000)
 #endif
 
 #pragma pack(push, 1)
