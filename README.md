@@ -4,7 +4,7 @@ ping
 This is a rather basic implementation of the `ping` command in C. It was
 created for learning more about raw sockets and how ping works (and for fun).
 
-Features
+Features:
 
 * Cross-platform: can compile and run on Windows (MSVC, Cygwin), Linux, macOS
 * Supports IPv6
@@ -13,7 +13,7 @@ Features
 Example usage:
 
 ```sh
-$./ping google.com
+$ ./ping google.com
 Sent ICMP echo request to 212.188.10.88
 Received ICMP echo reply from 212.188.10.88: seq=0, time=14.438 ms
 Sent ICMP echo request to 212.188.10.88
