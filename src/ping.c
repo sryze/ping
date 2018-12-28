@@ -5,9 +5,9 @@
     #include <process.h>         /* _getpid() */
     #include <winsock2.h>
     #include <ws2tcpip.h>        /* getaddrinfo() */
-    #define getpid _getpid
 #else
     #include <errno.h>
+    #include <fcntl.h>           /* fcntl() */
     #include <netdb.h>           /* getaddrinfo() */
     #include <stdint.h>
     #include <unistd.h>
@@ -36,8 +36,13 @@
     #define ICMP6_ECHO_REPLY 129
 #endif
 
-#define REQUEST_TIMEOUT  1000
-#define REQUEST_INTERVAL 1000
+#define REQUEST_TIMEOUT  1000000
+#define REQUEST_INTERVAL 1000000
+
+#ifdef _WIN32
+    #define getpid _getpid
+    #define usleep(x) Sleep(x / 1000)
+#endif
 
 #pragma pack(push, 1)
 
@@ -117,14 +122,6 @@ static void fprint_net_error(FILE *stream, const char *callee) {
 #endif
 }
 
-static void sleep_ms(int milliseconds) {
-#ifdef _WIN32
-    Sleep(milliseconds);
-#else
-    usleep(milliseconds * 1000);
-#endif
-}
-
 static uint64_t get_time(void) {
 #ifdef _WIN32
     LARGE_INTEGER count;
@@ -146,9 +143,7 @@ int main(int argc, char **argv) {
 #ifdef _WIN32
     int ws2_error;
     WSADATA ws2_data;
-    DWORD timeout;
-#else
-    struct timeval timeout;
+    u_long ioctl_value;
 #endif
     char *hostname;
     int sockfd;
@@ -209,28 +204,17 @@ int main(int argc, char **argv) {
     }
 
 #ifdef _WIN32
-    timeout = REQUEST_TIMEOUT;
+    ioctl_value = 1;
+    if (ioctlsocket(sockfd, FIONBIO, &ioctl_value) != 0) {
+        fprint_net_error(stderr, "ioctlsocket");
+        exit(EXIT_FAILURE);
+    }
 #else
-    timeout.tv_sec = REQUEST_TIMEOUT / 1000;
-    timeout.tv_usec = (REQUEST_TIMEOUT % 1000) * 1000;
+    if (fcntl(sockfd, F_SETFL, O_NONBLOCK) == -1) {
+        fprint_net_error(stderr, "fcntl");
+        exit(EXIT_FAILURE);
+    }
 #endif
-
-    if (setsockopt(sockfd,
-                   SOL_SOCKET,
-                   SO_RCVTIMEO,
-                   (const char *)&timeout,
-                   sizeof(timeout)) < 0) {
-        fprint_net_error(stderr, "setsockopt");
-        exit(EXIT_FAILURE);
-    }
-    if (setsockopt(sockfd,
-                   SOL_SOCKET,
-                   SO_SNDTIMEO,
-                   (const char *)&timeout,
-                   sizeof(timeout)) < 0) {
-        fprint_net_error(stderr, "setsockopt");
-        exit(EXIT_FAILURE);
-    }
 
     for (seq = 0; ; seq++) {
         struct icmp request;
@@ -248,10 +232,8 @@ int main(int argc, char **argv) {
         uint16_t expected_checksum;
 
         if (seq > 0) {
-            sleep_ms(REQUEST_INTERVAL);
+            usleep(REQUEST_INTERVAL);
         }
-
-        start_time = get_time();
 
         memset(&request, 0, sizeof(request));
         request.icmp_type =
@@ -283,52 +265,66 @@ int main(int argc, char **argv) {
             packet_size = MAX_IP_HEADER_SIZE + sizeof(struct icmp);
         }
 
-        memset(&recv_buf, 0, sizeof(recv_buf));
-        addrlen = addrinfo->ai_addrlen;
-        recv_result = recvfrom(sockfd,
-                               recv_buf,
-                               packet_size,
-                               0,
-                               addrinfo->ai_addr,
-                               &addrlen);
-        if (recv_result <= 0) {
+        start_time = get_time();
+
+        for (;;) {
+            delay = get_time() - start_time;
+
+            addrlen = addrinfo->ai_addrlen;
+            recv_result = recvfrom(sockfd,
+                                   recv_buf,
+                                   packet_size,
+                                   0,
+                                   addrinfo->ai_addr,
+                                   &addrlen);
+            if (recv_result <= 0) {
 #ifdef _WIN32
-            if (GetLastError() == WSAETIMEDOUT) {
+                if (GetLastError() == WSAEWOULDBLOCK) {
 #else
-            if (errno == ETIMEDOUT) {
+                if (errno == EAGAIN) {
 #endif
-                fprintf(stderr, "Request timed out\n");
-            } else {
-                fprint_net_error(stderr, "recvfrom");
+                    if (delay > REQUEST_TIMEOUT) {
+                        printf("Request timed out\n");
+                        break;
+                    } else {
+                        /* No data available yet, try to receive again. */
+                        continue;
+                    }
+                } else {
+                    fprint_net_error(stderr, "recvfrom");
+                    break;
+                }
             }
-            continue;
-        }
 
-        delay = get_time() - start_time;
+            if (addrinfo->ai_family == AF_INET6) {
+                ip_header_size = 0;
+            } else {
+                /* In contrast to IPv6, for IPv4 connections we do receive IP headers in
+                 * incoming datagrams.
+                 *
+                 * IP.VHL = version (4 bits) + header length (lower 4 bits).
+                 */
+                ip_vhl = *(uint8_t *)recv_buf;
+                ip_header_size = (ip_vhl & 0x0F) * 4;
+            }
 
-        if (addrinfo->ai_family == AF_INET6) {
-            ip_header_size = 0;
-        } else {
-            /* In contrast to IPv6, for IPv4 connections we do receive IP headers in
-             * incoming datagrams.
-             *
-             * IP.VHL = version (4 bits) + header length (lower 4 bits).
-             */
-            ip_vhl = *(uint8_t *)recv_buf;
-            ip_header_size = (ip_vhl & 0x0F) * 4;
-        }
-
-        reply = (struct icmp *)(recv_buf + ip_header_size);
-        reply->icmp_cksum = ntohs(reply->icmp_cksum);
-        reply->icmp_id = ntohs(reply->icmp_id);
-        reply->icmp_seq = ntohs(reply->icmp_seq);
+            reply = (struct icmp *)(recv_buf + ip_header_size);
+            reply->icmp_cksum = ntohs(reply->icmp_cksum);
+            reply->icmp_id = ntohs(reply->icmp_id);
+            reply->icmp_seq = ntohs(reply->icmp_seq);
         
-        if (reply->icmp_id != id
-            || (addrinfo->ai_family == AF_INET && reply->icmp_type != ICMP_ECHO_REPLY)
-            || (addrinfo->ai_family == AF_INET6
-                && reply->icmp_type != ICMP6_ECHO
-                && reply->icmp_type != ICMP6_ECHO_REPLY)) {
-            fprintf(stderr, "Invalid ICMP echo reply received\n");
+            if (reply->icmp_id == id
+                && ((addrinfo->ai_family == AF_INET
+                        && reply->icmp_type == ICMP_ECHO_REPLY)
+                    ||
+                    (addrinfo->ai_family == AF_INET6
+                        && (reply->icmp_type != ICMP6_ECHO
+                            || reply->icmp_type != ICMP6_ECHO_REPLY)))) {
+                break;
+            }
+        }
+
+        if (recv_result <= 0) {
             continue;
         }
 
