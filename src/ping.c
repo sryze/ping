@@ -75,7 +75,9 @@ static uint16_t compute_checksum(const char *buf, size_t size) {
 }
 
 #ifdef _WIN32
-    static void fprint_win32_error(FILE *stream, int error) {
+    static void fprint_win32_error(FILE *stream,
+                                   const char *callee,
+                                   int error) {
         char *message = NULL;
         DWORD format_flags = FORMAT_MESSAGE_FROM_SYSTEM
             | FORMAT_MESSAGE_IGNORE_INSERTS
@@ -92,19 +94,19 @@ static uint16_t compute_checksum(const char *buf, size_t size) {
             0,
             NULL);
         if (result > 0) {
-            fprintf(stream, "%s\n", message);
+            fprintf(stream, "%s: %s\n", callee, message);
             LocalFree(message);
         } else {
-            fprintf(stream, "Unknown error\n");
+            fprintf(stream, "%s: Unknown error\n", callee);
         }
     }
 #endif
 
-static void fprint_net_error(FILE *stream) {
+static void fprint_net_error(FILE *stream, const char *callee) {
 #ifdef _WIN32
-    fprint_win32_error(stream, GetLastError());
+    fprint_win32_error(stream, callee, GetLastError());
 #else
-    fprintf(stream, "%s\n", strerror(errno));
+    fprintf(stream, "%s: %s\n", callee, strerror(errno));
 #endif
 }
 
@@ -172,7 +174,7 @@ int main(int argc, char **argv) {
 
     error = getaddrinfo(hostname, NULL, &addrinfo_hints, &addrinfo_head);
     if (error != 0) {
-        fprintf(stderr, "%s\n", gai_strerror(error));
+        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(error));
         exit(EXIT_FAILURE);
     }
 
@@ -182,17 +184,13 @@ int main(int argc, char **argv) {
         sockfd = socket(addrinfo->ai_family,
                         addrinfo->ai_socktype,
                         addrinfo->ai_protocol);
-        if (sockfd < 0) {
-            fprint_net_error(stderr);
-            continue;
+        if (sockfd >= 0) {
+            break;
         }
-
-        /* Socket was successfully created. */
-        break;
     }
 
     if (addrinfo == NULL) {
-        fprintf(stderr, "%s\n", hostname);
+        fprint_net_error(stderr, "socket");
         exit(EXIT_FAILURE);
     }
 
@@ -223,7 +221,7 @@ int main(int argc, char **argv) {
                    SO_RCVTIMEO,
                    (const char *)&timeout,
                    sizeof(timeout)) < 0) {
-        fprint_net_error(stderr);
+        fprint_net_error(stderr, "setsockopt");
         exit(EXIT_FAILURE);
     }
     if (setsockopt(sockfd,
@@ -231,7 +229,7 @@ int main(int argc, char **argv) {
                    SO_SNDTIMEO,
                    (const char *)&timeout,
                    sizeof(timeout)) < 0) {
-        fprint_net_error(stderr);
+        fprint_net_error(stderr, "setsockopt");
         exit(EXIT_FAILURE);
     }
 
@@ -271,7 +269,7 @@ int main(int argc, char **argv) {
                              addrinfo->ai_addr,
                              addrinfo->ai_addrlen);
         if (send_result < 0) {
-            fprint_net_error(stderr);
+            fprint_net_error(stderr, "sendto");
             exit(EXIT_FAILURE);
         }
 
@@ -293,7 +291,7 @@ int main(int argc, char **argv) {
 #endif
                 fprintf(stderr, "Request timed out\n");
             } else {
-                fprint_net_error(stderr);
+                fprint_net_error(stderr, "recvfrom");
             }
             continue;
         }
