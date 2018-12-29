@@ -22,6 +22,7 @@
 
 #define MIN_IP_HEADER_SIZE 20
 #define MAX_IP_HEADER_SIZE 60
+#define MAX_IP6_PSEUDO_HEADER_SIZE 40
 
 #ifndef ICMP_ECHO
     #define ICMP_ECHO 8
@@ -61,6 +62,14 @@
         uint16_t icmp_seq;
     };
 #endif
+
+struct ip6_pseudo_hdr {
+    struct in6_addr ip6_src;
+    struct in6_addr ip6_dst;
+    uint32_t ip6_plen;
+    uint8_t ip6_zero[3];
+    uint8_t ip6_nxt;
+};
 
 #pragma pack(pop)
 
@@ -234,15 +243,15 @@ int main(int argc, char **argv) {
 #endif
 
     for (seq = 0; ; seq++) {
-        struct icmp request;
+        struct icmp icmp_request = {0};
         int send_result;
         char recv_buf[MAX_IP_HEADER_SIZE + sizeof(struct icmp)];
+        int recv_size;
         int recv_result;
         socklen_t addrlen;
-        uint8_t packet_size;
         uint8_t ip_vhl;
         uint8_t ip_header_size;
-        struct icmp *reply;
+        struct icmp *icmp_response;
         uint64_t start_time;
         uint64_t delay;
         uint16_t checksum;
@@ -252,19 +261,48 @@ int main(int argc, char **argv) {
             usleep(REQUEST_INTERVAL);
         }
 
-        memset(&request, 0, sizeof(request));
-        request.icmp_type =
+        icmp_request.icmp_type =
             addrinfo->ai_family == AF_INET6 ? ICMP6_ECHO : ICMP_ECHO;
-        request.icmp_code = 0;
-        request.icmp_cksum = 0;
-        request.icmp_id = htons(id);
-        request.icmp_seq = htons(seq);
-        request.icmp_cksum =
-            compute_checksum((const char *)&request, (int)sizeof(request));
+        icmp_request.icmp_code = 0;
+        icmp_request.icmp_cksum = 0;
+        icmp_request.icmp_id = htons(id);
+        icmp_request.icmp_seq = htons(seq);
+
+        switch (addrinfo->ai_family) {
+            case AF_INET:
+                icmp_request.icmp_cksum =
+                    compute_checksum((const char *)&icmp_request,
+                                     sizeof(icmp_request));
+                break;
+            case AF_INET6: {
+                /*
+                 * Checksum is calculated from the ICMPv6 packet prepended
+                 * with an IPv6 "pseudo-header" (this is different from IPv4).
+                 *
+                 * https://tools.ietf.org/html/rfc2463#section-2.3
+                 * https://tools.ietf.org/html/rfc2460#section-8.1
+                 */
+                struct {
+                    struct ip6_pseudo_hdr ip6_hdr;
+                    struct icmp icmp;
+                } data = {0};
+
+                data.ip6_hdr.ip6_src.s6_addr[15] = 1; /* ::1 (loopback) */
+                data.ip6_hdr.ip6_dst =
+                    ((struct sockaddr_in6 *)&addrinfo->ai_addr)->sin6_addr;
+                data.ip6_hdr.ip6_plen = htonl((uint32_t)sizeof(struct icmp));
+                data.ip6_hdr.ip6_nxt = IPPROTO_ICMPV6;
+                data.icmp = icmp_request;
+
+                icmp_request.icmp_cksum =
+                    compute_checksum((const char *)&data, sizeof(data));
+                break;
+            }
+        }
 
         send_result = sendto(sockfd,
-                             (const char *)&request,
-                             sizeof(request),
+                             (const char *)&icmp_request,
+                             sizeof(icmp_request),
                              0,
                              addrinfo->ai_addr,
                              addrinfo->ai_addrlen);
@@ -275,11 +313,14 @@ int main(int argc, char **argv) {
 
         printf("Sent ICMP echo request to %s\n", addrstr);
 
-        if (addrinfo->ai_family == AF_INET6) {
-            /* When using IPv6 we don't receive IP headers in recvfrom(). */
-            packet_size = sizeof(struct icmp);
-        } else {
-            packet_size = MAX_IP_HEADER_SIZE + sizeof(struct icmp);
+        switch (addrinfo->ai_family) {
+            case AF_INET:
+                recv_size = (int)(MAX_IP_HEADER_SIZE + sizeof(struct icmp));
+                break;
+            case AF_INET6:
+                /* When using IPv6 we don't receive IP headers in recvfrom. */
+                recv_size = (int)sizeof(struct icmp);
+                break;
         }
 
         start_time = get_time();
@@ -290,7 +331,7 @@ int main(int argc, char **argv) {
             addrlen = addrinfo->ai_addrlen;
             recv_result = recvfrom(sockfd,
                                    recv_buf,
-                                   packet_size,
+                                   recv_size,
                                    0,
                                    addrinfo->ai_addr,
                                    &addrlen);
@@ -313,30 +354,35 @@ int main(int argc, char **argv) {
                 }
             }
 
-            if (addrinfo->ai_family == AF_INET6) {
-                ip_header_size = 0;
-            } else {
-                /* In contrast to IPv6, for IPv4 connections we do receive IP headers in
-                 * incoming datagrams.
-                 *
-                 * IP.VHL = version (4 bits) + header length (lower 4 bits).
-                 */
-                ip_vhl = *(uint8_t *)recv_buf;
-                ip_header_size = (ip_vhl & 0x0F) * 4;
+            switch (addrinfo->ai_family) {
+                case AF_INET:
+                    /* In contrast to IPv6, for IPv4 connections we do receive
+                     * IP headers in incoming datagrams.
+                     *
+                     * VHL = version (4 bits) + header length (lower 4 bits).
+                     */
+                    ip_vhl = *(uint8_t *)recv_buf;
+                    ip_header_size = (ip_vhl & 0x0F) * 4;
+                    break;
+                case AF_INET6:
+                    ip_header_size = 0;
+                    break;
             }
 
-            reply = (struct icmp *)(recv_buf + ip_header_size);
-            reply->icmp_cksum = ntohs(reply->icmp_cksum);
-            reply->icmp_id = ntohs(reply->icmp_id);
-            reply->icmp_seq = ntohs(reply->icmp_seq);
+            icmp_response = (struct icmp *)(recv_buf + ip_header_size);
+            icmp_response->icmp_cksum = ntohs(icmp_response->icmp_cksum);
+            icmp_response->icmp_id = ntohs(icmp_response->icmp_id);
+            icmp_response->icmp_seq = ntohs(icmp_response->icmp_seq);
         
-            if (reply->icmp_id == id
+            if (icmp_response->icmp_id == id
                 && ((addrinfo->ai_family == AF_INET
-                        && reply->icmp_type == ICMP_ECHO_REPLY)
+                        && icmp_response->icmp_type == ICMP_ECHO_REPLY)
                     ||
                     (addrinfo->ai_family == AF_INET6
-                        && (reply->icmp_type != ICMP6_ECHO
-                            || reply->icmp_type != ICMP6_ECHO_REPLY)))) {
+                        && (icmp_response->icmp_type != ICMP6_ECHO
+                            || icmp_response->icmp_type != ICMP6_ECHO_REPLY))
+                )
+            ) {
                 break;
             }
         }
@@ -345,14 +391,37 @@ int main(int argc, char **argv) {
             continue;
         }
 
-        checksum = reply->icmp_cksum;
-        reply->icmp_cksum = 0;
-        expected_checksum =
-            compute_checksum((const char *)reply, (int)sizeof(*reply));
+        checksum = icmp_response->icmp_cksum;
+        icmp_response->icmp_cksum = 0;
+
+        switch (addrinfo->ai_family) {
+            case AF_INET:
+                expected_checksum =
+                    compute_checksum((const char *)icmp_response,
+                                     sizeof(*icmp_response));
+                break;
+            case AF_INET6: {
+                struct {
+                    struct ip6_pseudo_hdr ip6_hdr;
+                    struct icmp icmp;
+                } data = {0};
+
+                /* TODO: Need to get sourcea nd destination address somehow... */
+                /* data.ip6_hdr.ip6_src = ... */
+                /* data.ip6_hdr.ip6_dst = ... */
+                data.ip6_hdr.ip6_plen = htonl((uint32_t)sizeof(struct icmp));
+                data.ip6_hdr.ip6_nxt = IPPROTO_ICMPV6;
+                data.icmp = *icmp_response;
+
+                expected_checksum =
+                    compute_checksum((const char *)&data, sizeof(data));
+                break;
+            }
+        }
 
         printf("Received ICMP echo reply from %s: seq=%d, time=%.3f ms",
                addrstr,
-               reply->icmp_seq,
+               icmp_response->icmp_seq,
                delay / 1000.0);
 
         if (checksum != expected_checksum) {
