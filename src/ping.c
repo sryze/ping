@@ -36,7 +36,7 @@
     #define ICMP6_ECHO_REPLY 129
 #endif
 
-#define REQUEST_TIMEOUT  1000000
+#define REQUEST_TIMEOUT 1000000
 #define REQUEST_INTERVAL 1000000
 
 #ifdef _WIN32
@@ -54,8 +54,8 @@
         typedef unsigned __int64 uint64_t;
     #endif
     struct icmp {
-        uint8_t  icmp_type;
-        uint8_t  icmp_code;
+        uint8_t icmp_type;
+        uint8_t icmp_code;
         uint16_t icmp_cksum;
         uint16_t icmp_id;
         uint16_t icmp_seq;
@@ -146,11 +146,12 @@ int main(int argc, char **argv) {
     u_long ioctl_value;
 #endif
     char *hostname;
-    int sockfd;
     int error;
+    int sockfd = 0;
     struct addrinfo addrinfo_hints;
     struct addrinfo *addrinfo_head;
     struct addrinfo *addrinfo;
+    void *addr;
     char addrstr[INET6_ADDRSTRLEN] = "<unknown>";
     uint16_t id = (uint16_t)getpid();
     uint16_t seq;
@@ -182,26 +183,42 @@ int main(int argc, char **argv) {
     for (addrinfo = addrinfo_head;
          addrinfo != NULL;
          addrinfo = addrinfo->ai_next) {
+        if (addrinfo->ai_family != AF_INET
+            && addrinfo->ai_family != AF_INET6) {
+            continue;
+        }
         sockfd = socket(addrinfo->ai_family,
                         addrinfo->ai_socktype,
                         addrinfo->ai_protocol);
         if (sockfd >= 0) {
             break;
+        } else {
+            error = errno;
         }
     }
 
     if (addrinfo == NULL) {
-        fprint_net_error(stderr, "socket");
+        if (sockfd < 0) {
+            fprint_net_error(stderr, "socket");
+        } else {
+            fprintf(stderr, "Could not resolve %s\n", hostname);
+        }
         exit(EXIT_FAILURE);
     }
 
-    if (inet_ntop(addrinfo->ai_family,
-                  addrinfo->ai_addr->sa_data,
-                  addrstr,
-                  sizeof(addrstr)) == NULL) {
-        fprint_net_error(stderr, "inet_ntop");
-        exit(EXIT_FAILURE);
+    switch (addrinfo->ai_family) {
+        case AF_INET:
+            addr = &((struct sockaddr_in *)addrinfo->ai_addr)->sin_addr;
+            break;
+        case AF_INET6:
+            addr = &((struct sockaddr_in6 *)addrinfo->ai_addr)->sin6_addr;
+            break;
     }
+
+    inet_ntop(addrinfo->ai_family,
+              addr,
+              addrstr,
+              sizeof(addrstr));
 
 #ifdef _WIN32
     ioctl_value = 1;
