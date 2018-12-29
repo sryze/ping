@@ -20,6 +20,10 @@
     #include <sys/types.h>
 #endif
 
+#define IP_VERISON_ANY 0
+#define IP_V4 4
+#define IP_V6 6
+
 #define MIN_IP_HEADER_SIZE 20
 #define MAX_IP_HEADER_SIZE 60
 #define MAX_IP6_PSEUDO_HEADER_SIZE 40
@@ -154,19 +158,34 @@ int main(int argc, char **argv) {
     WSADATA ws2_data;
     u_long ioctl_value;
 #endif
-    char *hostname;
-    int error;
-    int sockfd = 0;
+    char *target_host = NULL;
+    int ip_version = IP_VERISON_ANY;
+    int i;
+    int gai_error;
+    int sockfd = -1;
     struct addrinfo addrinfo_hints;
     struct addrinfo *addrinfo_head;
-    struct addrinfo *addrinfo;
+    struct addrinfo *addrinfo_ptr;
+    struct addrinfo addrinfo;
     void *addr;
     char addrstr[INET6_ADDRSTRLEN] = "<unknown>";
     uint16_t id = (uint16_t)getpid();
     uint16_t seq;
 
-    if (argc < 2) {
-        fprintf(stderr, "Usage: ping <destination>\n");
+    for (i = 1; i < argc; i++) {
+        if (argv[i][0] == '-') {
+            if (strcmp(argv[i], "-4") == 0) {
+                ip_version = IP_V4;
+            } else if (strcmp(argv[i], "-6") == 0) {
+                ip_version = IP_V6;
+            }
+        } else {
+            target_host = argv[i];
+        }
+    }
+
+    if (target_host == NULL) {
+        fprintf(stderr, "Usage: ping [-4] [-6] <target_host>\n");
         exit(EXIT_FAILURE);
     }
 
@@ -178,53 +197,65 @@ int main(int argc, char **argv) {
     }
 #endif
 
-    hostname = argv[1];
-    memset(&addrinfo_hints, 0, sizeof(addrinfo_hints));
-    addrinfo_hints.ai_socktype = SOCK_RAW;
-    addrinfo_hints.ai_protocol = IPPROTO_ICMP;
+    if (ip_version == IP_V4 || ip_version == IP_VERISON_ANY) {
+        memset(&addrinfo_hints, 0, sizeof(addrinfo_hints));
+        addrinfo_hints.ai_family = AF_INET;
+        addrinfo_hints.ai_socktype = SOCK_RAW;
+        addrinfo_hints.ai_protocol = IPPROTO_ICMP;
+        gai_error = getaddrinfo(target_host,
+                                NULL,
+                                &addrinfo_hints,
+                                &addrinfo_head);
+    }
 
-    error = getaddrinfo(hostname, NULL, &addrinfo_hints, &addrinfo_head);
-    if (error != 0) {
-        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(error));
+    if (ip_version == IP_V6
+        || (ip_version == IP_VERISON_ANY && gai_error != 0)) {
+        memset(&addrinfo_hints, 0, sizeof(addrinfo_hints));
+        addrinfo_hints.ai_family = AF_INET6;
+        addrinfo_hints.ai_socktype = SOCK_RAW;
+        addrinfo_hints.ai_protocol = IPPROTO_ICMPV6;
+        gai_error = getaddrinfo(target_host,
+                                NULL,
+                                &addrinfo_hints,
+                                &addrinfo_head);
+    }
+
+    if (gai_error != 0) {
+        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(gai_error));
         exit(EXIT_FAILURE);
     }
 
-    for (addrinfo = addrinfo_head;
-         addrinfo != NULL;
-         addrinfo = addrinfo->ai_next) {
-        if (addrinfo->ai_family != AF_INET
-            && addrinfo->ai_family != AF_INET6) {
-            continue;
-        }
-        sockfd = socket(addrinfo->ai_family,
-                        addrinfo->ai_socktype,
-                        addrinfo->ai_protocol);
+    for (addrinfo_ptr = addrinfo_head;
+         addrinfo_ptr != NULL;
+         addrinfo_ptr = addrinfo_ptr->ai_next) {
+        sockfd = socket(addrinfo_ptr->ai_family,
+                        addrinfo_ptr->ai_socktype,
+                        addrinfo_ptr->ai_protocol);
         if (sockfd >= 0) {
             break;
-        } else {
-            error = errno;
         }
     }
 
-    if (addrinfo == NULL) {
-        if (sockfd < 0) {
-            fprint_net_error(stderr, "socket");
-        } else {
-            fprintf(stderr, "Could not resolve %s\n", hostname);
-        }
+    if (sockfd < 0) {
+        fprint_net_error(stderr, "socket");
+        freeaddrinfo(addrinfo_head);
         exit(EXIT_FAILURE);
     }
 
-    switch (addrinfo->ai_family) {
+    memcpy(&addrinfo, addrinfo_ptr, sizeof(struct addrinfo));
+    addrinfo.ai_next = NULL;
+    freeaddrinfo(addrinfo_ptr);
+
+    switch (addrinfo.ai_family) {
         case AF_INET:
-            addr = &((struct sockaddr_in *)addrinfo->ai_addr)->sin_addr;
+            addr = &((struct sockaddr_in *)addrinfo.ai_addr)->sin_addr;
             break;
         case AF_INET6:
-            addr = &((struct sockaddr_in6 *)addrinfo->ai_addr)->sin6_addr;
+            addr = &((struct sockaddr_in6 *)addrinfo.ai_addr)->sin6_addr;
             break;
     }
 
-    inet_ntop(addrinfo->ai_family,
+    inet_ntop(addrinfo.ai_family,
               addr,
               addrstr,
               sizeof(addrstr));
@@ -262,13 +293,13 @@ int main(int argc, char **argv) {
         }
 
         icmp_request.icmp_type =
-            addrinfo->ai_family == AF_INET6 ? ICMP6_ECHO : ICMP_ECHO;
+            addrinfo.ai_family == AF_INET6 ? ICMP6_ECHO : ICMP_ECHO;
         icmp_request.icmp_code = 0;
         icmp_request.icmp_cksum = 0;
         icmp_request.icmp_id = htons(id);
         icmp_request.icmp_seq = htons(seq);
 
-        switch (addrinfo->ai_family) {
+        switch (addrinfo.ai_family) {
             case AF_INET:
                 icmp_request.icmp_cksum =
                     compute_checksum((const char *)&icmp_request,
@@ -289,7 +320,7 @@ int main(int argc, char **argv) {
 
                 data.ip6_hdr.ip6_src.s6_addr[15] = 1; /* ::1 (loopback) */
                 data.ip6_hdr.ip6_dst =
-                    ((struct sockaddr_in6 *)&addrinfo->ai_addr)->sin6_addr;
+                    ((struct sockaddr_in6 *)&addrinfo.ai_addr)->sin6_addr;
                 data.ip6_hdr.ip6_plen = htonl((uint32_t)sizeof(struct icmp));
                 data.ip6_hdr.ip6_nxt = IPPROTO_ICMPV6;
                 data.icmp = icmp_request;
@@ -304,8 +335,8 @@ int main(int argc, char **argv) {
                              (const char *)&icmp_request,
                              sizeof(icmp_request),
                              0,
-                             addrinfo->ai_addr,
-                             addrinfo->ai_addrlen);
+                             addrinfo.ai_addr,
+                             addrinfo.ai_addrlen);
         if (send_result < 0) {
             fprint_net_error(stderr, "sendto");
             exit(EXIT_FAILURE);
@@ -313,7 +344,7 @@ int main(int argc, char **argv) {
 
         printf("Sent ICMP echo request to %s\n", addrstr);
 
-        switch (addrinfo->ai_family) {
+        switch (addrinfo.ai_family) {
             case AF_INET:
                 recv_size = (int)(MAX_IP_HEADER_SIZE + sizeof(struct icmp));
                 break;
@@ -328,14 +359,18 @@ int main(int argc, char **argv) {
         for (;;) {
             delay = get_time() - start_time;
 
-            addrlen = addrinfo->ai_addrlen;
+            addrlen = addrinfo.ai_addrlen;
             recv_result = recvfrom(sockfd,
                                    recv_buf,
                                    recv_size,
                                    0,
-                                   addrinfo->ai_addr,
+                                   addrinfo.ai_addr,
                                    &addrlen);
-            if (recv_result <= 0) {
+            if (recv_result == 0) {
+                printf("Connection closed\n");
+                break;
+            }
+            if (recv_result < 0) {
 #ifdef _WIN32
                 if (GetLastError() == WSAEWOULDBLOCK) {
 #else
@@ -354,7 +389,7 @@ int main(int argc, char **argv) {
                 }
             }
 
-            switch (addrinfo->ai_family) {
+            switch (addrinfo.ai_family) {
                 case AF_INET:
                     /* In contrast to IPv6, for IPv4 connections we do receive
                      * IP headers in incoming datagrams.
@@ -375,10 +410,10 @@ int main(int argc, char **argv) {
             icmp_response->icmp_seq = ntohs(icmp_response->icmp_seq);
         
             if (icmp_response->icmp_id == id
-                && ((addrinfo->ai_family == AF_INET
+                && ((addrinfo.ai_family == AF_INET
                         && icmp_response->icmp_type == ICMP_ECHO_REPLY)
                     ||
-                    (addrinfo->ai_family == AF_INET6
+                    (addrinfo.ai_family == AF_INET6
                         && (icmp_response->icmp_type != ICMP6_ECHO
                             || icmp_response->icmp_type != ICMP6_ECHO_REPLY))
                 )
@@ -394,7 +429,7 @@ int main(int argc, char **argv) {
         checksum = icmp_response->icmp_cksum;
         icmp_response->icmp_cksum = 0;
 
-        switch (addrinfo->ai_family) {
+        switch (addrinfo.ai_family) {
             case AF_INET:
                 expected_checksum =
                     compute_checksum((const char *)icmp_response,
@@ -425,7 +460,7 @@ int main(int argc, char **argv) {
                delay / 1000.0);
 
         if (checksum != expected_checksum) {
-            printf(" (checksum mismatch: %x != %x)\n",
+            printf(" (incorrect checksum: %x != %x)\n",
                     checksum,
                     expected_checksum);
         } else {
