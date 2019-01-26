@@ -7,7 +7,7 @@ created for learning more about raw sockets and how ping works (and for fun).
 Features:
 
 * Cross-platform: can compile and run on Windows (MSVC, Cygwin), Linux, macOS
-* Supports IPv6 (WIP)
+* Supports IPv6
 * Displays time with microsecond accuracy
 
 Example usage:
