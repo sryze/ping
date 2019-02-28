@@ -5,6 +5,7 @@
     #include <process.h>         /* _getpid() */
     #include <winsock2.h>
     #include <ws2tcpip.h>        /* getaddrinfo() */
+    typedef SOCKET socket_t;
 #else
     #include <errno.h>
     #include <fcntl.h>           /* fcntl() */
@@ -18,6 +19,7 @@
     #include <sys/socket.h>
     #include <sys/time.h>
     #include <sys/types.h>
+    typedef int socket_t;
 #endif
 
 #define IP_VERISON_ANY 0
@@ -162,7 +164,7 @@ int main(int argc, char **argv) {
     int ip_version = IP_VERISON_ANY;
     int i;
     int gai_error;
-    int sockfd = -1;
+    socket_t sockfd = -1;
     struct addrinfo addrinfo_hints;
     struct addrinfo *addrinfo_head;
     struct addrinfo *addrinfo_ptr;
@@ -279,7 +281,7 @@ int main(int argc, char **argv) {
         char recv_buf[MAX_IP_HEADER_SIZE + sizeof(struct icmp)];
         int recv_size;
         int recv_result;
-        socklen_t addrlen;
+        int addrlen;
         uint8_t ip_vhl;
         uint8_t ip_header_size;
         struct icmp *icmp_response;
@@ -336,7 +338,7 @@ int main(int argc, char **argv) {
                              sizeof(icmp_request),
                              0,
                              addrinfo.ai_addr,
-                             addrinfo.ai_addrlen);
+                             (int)addrinfo.ai_addrlen);
         if (send_result < 0) {
             fprint_net_error(stderr, "sendto");
             exit(EXIT_FAILURE);
@@ -359,7 +361,7 @@ int main(int argc, char **argv) {
         for (;;) {
             delay = get_time() - start_time;
 
-            addrlen = addrinfo.ai_addrlen;
+            addrlen = (int)addrinfo.ai_addrlen;
             recv_result = recvfrom(sockfd,
                                    recv_buf,
                                    recv_size,
