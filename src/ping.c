@@ -281,7 +281,7 @@ int main(int argc, char **argv) {
         char recv_buf[MAX_IP_HEADER_SIZE + sizeof(struct icmp)];
         int recv_size;
         int recv_result;
-        int addrlen;
+        socklen_t addrlen;
         uint8_t ip_vhl;
         uint8_t ip_header_size;
         struct icmp *icmp_response;
@@ -410,7 +410,7 @@ int main(int argc, char **argv) {
             icmp_response->icmp_cksum = ntohs(icmp_response->icmp_cksum);
             icmp_response->icmp_id = ntohs(icmp_response->icmp_id);
             icmp_response->icmp_seq = ntohs(icmp_response->icmp_seq);
-        
+
             if (icmp_response->icmp_id == id
                 && ((addrinfo.ai_family == AF_INET
                         && icmp_response->icmp_type == ICMP_ECHO_REPLY)
