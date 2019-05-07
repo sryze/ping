@@ -8,7 +8,7 @@ Features:
 
 * Cross-platform: can compile and run on Windows (MSVC, Cygwin), Linux, macOS
 * Supports IPv6
-* Displays time with microsecond accuracy
+* Displays time with microsecond precision
 
 Example usage:
 
