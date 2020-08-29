@@ -1,0 +1,18 @@
+language: c
+
+matrix:
+  include:
+    - os: linux
+      dist: xenial
+      sudo: required
+      compiler: gcc
+    - os: osx
+      compiler: clang
+    - os: windows
+
+before_script:
+  - mkdir build && cd build
+  - cmake .. -DCMAKE_BUILD_TYPE=Release
+
+script:
+  - cmake --build .
