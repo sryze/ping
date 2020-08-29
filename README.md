@@ -1,6 +1,8 @@
 ping
 ====
 
+[![Build Status](https://travis-ci.org/sryze/ping.svg?branch=master)](https://travis-ci.org/sryze/ping)
+
 This is a rather basic implementation of the `ping` command in C. It was
 created for learning more about raw sockets and how ping works (and for fun).
 
