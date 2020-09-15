@@ -5,9 +5,8 @@ matrix:
     - os: linux
       dist: xenial
       sudo: required
-      compiler: gcc
+    - os: freebsd
     - os: osx
-      compiler: clang
     - os: windows
 
 before_script:
