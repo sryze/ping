@@ -1,7 +1,7 @@
 ping
 ====
 
-[![Build Status](https://travis-ci.org/sryze/ping.svg?branch=master)](https://travis-ci.org/sryze/ping)
+[![Build Status][build_status]][build]
 
 This is a rather basic implementation of the `ping` command in C. It was
 created for learning more about raw sockets and how ping works (and for fun).
@@ -72,3 +72,6 @@ The `scripts` directory contains a couple of scripts to aid debugging:
   `ping.pcap` (needs to be run as root)
 * `dump.sh` - prints the contents of `ping.pcap` in a nice form (`tcpdump`
    may actually display helpful errors there, like a miscalculated checksum)
+
+[build]: https://travis-ci.org/sryze/ping
+[build_status]: https://travis-ci.org/sryze/ping.svg?branch=master
