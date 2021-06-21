@@ -170,7 +170,7 @@ int main(int argc, char **argv) {
     struct addrinfo *addrinfo = NULL;
     void *addr;
     char addrstr[INET6_ADDRSTRLEN] = "<unknown>";
-    struct sockaddr_in6 src_addr;
+    struct sockaddr_storage src_addr;
     socklen_t src_addr_len = sizeof(src_addr);
     uint16_t id = (uint16_t)getpid();
     uint16_t seq;
@@ -363,17 +363,12 @@ int main(int argc, char **argv) {
         for (;;) {
             delay = get_time() - start_time;
 
-            if (addrinfo->ai_family == AF_INET6) {
-                recv_result = recvfrom(sockfd,
-                                       recv_buf,
-                                       recv_size,
-                                       0,
-                                       (struct sockaddr *)&src_addr,
-                                       &src_addr_len);
-            } else {
-                recv_result = recvfrom(
-                    sockfd, recv_buf, recv_size, 0, NULL, NULL);
-            }
+            recv_result = recvfrom(sockfd,
+                                   recv_buf,
+                                   recv_size,
+                                   0,
+                                   (struct sockaddr *)&src_addr,
+                                   &src_addr_len);
             if (recv_result == 0) {
                 printf("Connection closed\n");
                 break;
@@ -451,7 +446,8 @@ int main(int argc, char **argv) {
                             struct icmp icmp;
                         } data = {0};
 
-                        data.ip6_hdr.ip6_src = src_addr.sin6_addr;
+                        data.ip6_hdr.ip6_src =
+                            ((struct sockaddr_in6 *)&src_addr)->sin6_addr;
                         data.ip6_hdr.ip6_dst = in6addr_loopback;
                         data.ip6_hdr.ip6_plen =
                             htonl((uint32_t)sizeof(struct icmp));
