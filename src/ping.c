@@ -160,7 +160,7 @@ int main(int argc, char **argv) {
     WSADATA ws2_data;
     u_long ioctl_value;
 #endif
-    char *target_host = NULL;
+    char *hostname = NULL;
     int ip_version = IP_VERSION_ANY;
     int i;
     int gai_error;
@@ -183,12 +183,12 @@ int main(int argc, char **argv) {
                 ip_version = IP_V6;
             }
         } else {
-            target_host = argv[i];
+            hostname = argv[i];
         }
     }
 
-    if (target_host == NULL) {
-        fprintf(stderr, "Usage: ping [-4] [-6] <target_host>\n");
+    if (hostname == NULL) {
+        fprintf(stderr, "Usage: ping [-4|-6] <hostname>\n");
         goto error_exit;
     }
 
@@ -205,7 +205,7 @@ int main(int argc, char **argv) {
         addrinfo_hints.ai_family = AF_INET;
         addrinfo_hints.ai_socktype = SOCK_RAW;
         addrinfo_hints.ai_protocol = IPPROTO_ICMP;
-        gai_error = getaddrinfo(target_host,
+        gai_error = getaddrinfo(hostname,
                                 NULL,
                                 &addrinfo_hints,
                                 &addrinfo_head);
@@ -217,7 +217,7 @@ int main(int argc, char **argv) {
         addrinfo_hints.ai_family = AF_INET6;
         addrinfo_hints.ai_socktype = SOCK_RAW;
         addrinfo_hints.ai_protocol = IPPROTO_ICMPV6;
-        gai_error = getaddrinfo(target_host,
+        gai_error = getaddrinfo(hostname,
                                 NULL,
                                 &addrinfo_hints,
                                 &addrinfo_head);
