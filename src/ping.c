@@ -22,7 +22,7 @@
     typedef int socket_t;
 #endif
 
-#define IP_VERISON_ANY 0
+#define IP_VERSION_ANY 0
 #define IP_V4 4
 #define IP_V6 6
 
@@ -161,7 +161,7 @@ int main(int argc, char **argv) {
     u_long ioctl_value;
 #endif
     char *target_host = NULL;
-    int ip_version = IP_VERISON_ANY;
+    int ip_version = IP_VERSION_ANY;
     int i;
     int gai_error;
     socket_t sockfd = -1;
@@ -198,7 +198,7 @@ int main(int argc, char **argv) {
     }
 #endif
 
-    if (ip_version == IP_V4 || ip_version == IP_VERISON_ANY) {
+    if (ip_version == IP_V4 || ip_version == IP_VERSION_ANY) {
         memset(&addrinfo_hints, 0, sizeof(addrinfo_hints));
         addrinfo_hints.ai_family = AF_INET;
         addrinfo_hints.ai_socktype = SOCK_RAW;
@@ -210,7 +210,7 @@ int main(int argc, char **argv) {
     }
 
     if (ip_version == IP_V6
-        || (ip_version == IP_VERISON_ANY && gai_error != 0)) {
+        || (ip_version == IP_VERSION_ANY && gai_error != 0)) {
         memset(&addrinfo_hints, 0, sizeof(addrinfo_hints));
         addrinfo_hints.ai_family = AF_INET6;
         addrinfo_hints.ai_socktype = SOCK_RAW;
@@ -237,7 +237,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    if (sockfd < 0) {
+    if ((int)sockfd < 0) {
         fprint_net_error(stderr, "socket");
         goto error_exit;
     }
@@ -249,6 +249,8 @@ int main(int argc, char **argv) {
         case AF_INET6:
             addr = &((struct sockaddr_in6 *)addrinfo->ai_addr)->sin6_addr;
             break;
+        default:
+            abort();
     }
 
     inet_ntop(addrinfo->ai_family,
@@ -325,6 +327,8 @@ int main(int argc, char **argv) {
                     compute_checksum((const char *)&data, sizeof(data));
                 break;
             }
+            default:
+                abort();
         }
 
         send_result = sendto(sockfd,
@@ -348,6 +352,8 @@ int main(int argc, char **argv) {
                 /* When using IPv6 we don't receive IP headers in recvfrom. */
                 recv_size = (int)sizeof(struct icmp);
                 break;
+            default:
+                abort();
         }
 
         start_time = get_time();
@@ -398,6 +404,8 @@ int main(int argc, char **argv) {
                 case AF_INET6:
                     ip_header_size = 0;
                     break;
+                default:
+                    abort();
             }
 
             icmp_response = (struct icmp *)(recv_buf + ip_header_size);
@@ -410,8 +418,8 @@ int main(int argc, char **argv) {
                         && icmp_response->icmp_type == ICMP_ECHO_REPLY)
                     ||
                     (addrinfo->ai_family == AF_INET6
-                        && (icmp_response->icmp_type != ICMP6_ECHO
-                            || icmp_response->icmp_type != ICMP6_ECHO_REPLY))
+                        && (icmp_response->icmp_type == ICMP6_ECHO
+                            || icmp_response->icmp_type == ICMP6_ECHO_REPLY))
                 )
             ) {
                 break;
@@ -453,7 +461,7 @@ int main(int argc, char **argv) {
         printf("Received ICMP echo reply from %s: seq=%d, time=%.3f ms",
                addrstr,
                icmp_response->icmp_seq,
-               delay / 1000.0);
+               (double)delay / 1000.0);
 
         if (checksum != expected_checksum) {
             printf(" (incorrect checksum: %x != %x)\n",
@@ -465,7 +473,6 @@ int main(int argc, char **argv) {
     }
 
     return EXIT_SUCCESS;
-
 
 error_exit:
     if (addrinfo_head != NULL) {
