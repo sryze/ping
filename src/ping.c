@@ -274,14 +274,15 @@ int main(int argc, char **argv) {
 #endif
 
     for (seq = 0; ; seq++) {
-        struct icmp icmp_request = {0};
+        struct icmp request;
         int send_result;
         char recv_buf[MAX_IP_HEADER_SIZE + sizeof(struct icmp)];
         int recv_size;
         int recv_result;
         uint8_t ip_vhl;
         uint8_t ip_header_size;
-        struct icmp *icmp_response;
+        struct icmp *response;
+        struct icmp response_host;
         uint64_t start_time;
         uint64_t delay;
 
@@ -289,18 +290,18 @@ int main(int argc, char **argv) {
             usleep(REQUEST_INTERVAL);
         }
 
-        icmp_request.icmp_type =
+        request.icmp_type =
             addrinfo->ai_family == AF_INET6 ? ICMP6_ECHO : ICMP_ECHO;
-        icmp_request.icmp_code = 0;
-        icmp_request.icmp_cksum = 0;
-        icmp_request.icmp_id = htons(id);
-        icmp_request.icmp_seq = htons(seq);
+        request.icmp_code = 0;
+        request.icmp_cksum = 0;
+        request.icmp_id = htons(id);
+        request.icmp_seq = htons(seq);
 
         switch (addrinfo->ai_family) {
             case AF_INET:
-                icmp_request.icmp_cksum =
-                    compute_checksum((const char *)&icmp_request,
-                                     sizeof(icmp_request));
+                request.icmp_cksum =
+                    compute_checksum((const char *)&request,
+                                     sizeof(request));
                 break;
             case AF_INET6: {
                 /*
@@ -320,9 +321,9 @@ int main(int argc, char **argv) {
                     ((struct sockaddr_in6 *)&addrinfo->ai_addr)->sin6_addr;
                 data.ip6_hdr.ip6_plen = htonl((uint32_t)sizeof(struct icmp));
                 data.ip6_hdr.ip6_nxt = IPPROTO_ICMPV6;
-                data.icmp = icmp_request;
+                data.icmp = request;
 
-                icmp_request.icmp_cksum =
+                request.icmp_cksum =
                     compute_checksum((const char *)&data, sizeof(data));
                 break;
             }
@@ -331,8 +332,8 @@ int main(int argc, char **argv) {
         }
 
         send_result = sendto(sockfd,
-                             (const char *)&icmp_request,
-                             sizeof(icmp_request),
+                             (const char *)&request,
+                             sizeof(request),
                              0,
                              addrinfo->ai_addr,
                              (int)addrinfo->ai_addrlen);
@@ -410,35 +411,32 @@ int main(int argc, char **argv) {
                     abort();
             }
 
-            icmp_response = (struct icmp *)(recv_buf + ip_header_size);
-            icmp_response->icmp_cksum = ntohs(icmp_response->icmp_cksum);
-            icmp_response->icmp_id = ntohs(icmp_response->icmp_id);
-            icmp_response->icmp_seq = ntohs(icmp_response->icmp_seq);
+            response = (struct icmp *)(recv_buf + ip_header_size);
+            memcpy(&response_host, response, sizeof(response_host));
+            response_host.icmp_id = ntohs(response_host.icmp_id);
+            response_host.icmp_seq = ntohs(response_host.icmp_seq);
 
-            if (icmp_response->icmp_id == id
-                && ((addrinfo->ai_family == AF_INET
-                        && icmp_response->icmp_type == ICMP_ECHO_REPLY)
-                    ||
-                    (addrinfo->ai_family == AF_INET6
-                        && (icmp_response->icmp_type == ICMP6_ECHO
-                            || icmp_response->icmp_type == ICMP6_ECHO_REPLY))
-                )
-            ) {
+            if (response_host.icmp_id != id || response_host.icmp_seq != seq) {
+                continue;
+            }
+
+            if ((addrinfo->ai_family == AF_INET
+                    && response_host.icmp_type == ICMP_ECHO_REPLY)
+                || (addrinfo->ai_family == AF_INET6
+                    && response_host.icmp_type == ICMP6_ECHO_REPLY)) {
                 /*
-                 * It looks like we received a reply to our request! Verify the
-                 * checksum to be sure.
+                 * It looks like we received a reply to our request! Verify
+                 * the checksum to be sure.
                  */
-                uint16_t checksum;
+                uint16_t checksum = response_host.icmp_cksum;
                 uint16_t expected_checksum;
 
-                checksum = icmp_response->icmp_cksum;
-                icmp_response->icmp_cksum = 0;
+                response->icmp_cksum = 0;
 
                 switch (addrinfo->ai_family) {
                     case AF_INET:
-                        expected_checksum =
-                            compute_checksum((const char *)icmp_response,
-                                sizeof(*icmp_response));
+                        expected_checksum = compute_checksum(
+                            (const char *)response, sizeof(*response));
                         break;
                     case AF_INET6: {
                         struct {
@@ -452,10 +450,10 @@ int main(int argc, char **argv) {
                         data.ip6_hdr.ip6_plen =
                             htonl((uint32_t)sizeof(struct icmp));
                         data.ip6_hdr.ip6_nxt = IPPROTO_ICMPV6;
-                        data.icmp = *icmp_response;
+                        memcpy(&data.icmp, response, sizeof(struct icmp));
 
-                        expected_checksum =
-                            compute_checksum((char *)&data, sizeof(data));
+                        expected_checksum = compute_checksum(
+                            (const char *)&data, sizeof(data));
                         break;
                     }
                 }
@@ -479,7 +477,7 @@ int main(int argc, char **argv) {
 
         printf("Received ICMP echo reply from %s: seq=%d, time=%.3f ms\n",
                addrstr,
-               icmp_response->icmp_seq,
+               response->icmp_seq,
                (double)delay / 1000.0);
     }
 
