@@ -477,7 +477,7 @@ int main(int argc, char **argv) {
 
         printf("Received ICMP echo reply from %s: seq=%d, time=%.3f ms\n",
                addrstr,
-               response->icmp_seq,
+               response_host.icmp_seq,
                (double)delay / 1000.0);
     }
 
