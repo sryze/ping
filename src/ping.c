@@ -243,7 +243,7 @@ int main(int argc, char **argv)
     int ip_version = IP_VERSION_ANY;
     int error;
     socket_t sockfd = -1;
-    struct addrinfo *addrinfo_list;
+    struct addrinfo *addrinfo_list = NULL;
     struct addrinfo *addrinfo;
     char dst_addr_str[INET6_ADDRSTRLEN] = "<unknown>";
     struct sockaddr_storage dst_addr;
@@ -265,7 +265,7 @@ int main(int argc, char **argv)
 
     if (hostname == NULL) {
         fprintf(stderr, "Usage: ping [-4|-6] <hostname>\n");
-        return EXIT_FAILURE;
+        goto exit_error;
     }
 
 #ifdef _WIN32
@@ -295,7 +295,7 @@ int main(int argc, char **argv)
     }
     if (error != 0) {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(error));
-        return EXIT_FAILURE;
+        goto exit_error;
     }
 
     for (addrinfo = addrinfo_list;
@@ -311,7 +311,7 @@ int main(int argc, char **argv)
 
     if ((int)sockfd < 0) {
         psyserror("socket");
-        return EXIT_FAILURE;
+        goto exit_error;
     }
 
     memcpy(&dst_addr, addrinfo->ai_addr, addrinfo->ai_addrlen);
@@ -334,13 +334,13 @@ int main(int argc, char **argv)
         u_long opt_value = 1;
         if (ioctlsocket(sockfd, FIONBIO, &opt_value) != 0) {
             psyserror("ioctlsocket");
-            return EXIT_FAILURE;
+            goto exit_error;
         }
     }
 #else
     if (fcntl(sockfd, F_SETFL, O_NONBLOCK) == -1) {
         psyserror("fcntl");
-        return EXIT_FAILURE;
+        goto exit_error;
     }
 #endif
 
@@ -360,7 +360,7 @@ int main(int argc, char **argv)
                            sizeof(opt_value));
         if (error != 0) {
             psyserror("setsockopt");
-            return EXIT_FAILURE;
+            goto exit_error;
         }
     }
 
@@ -376,7 +376,7 @@ int main(int argc, char **argv)
 
     for (seq = 0; ; seq++) {
         struct icmp request;
-        
+
         request.icmp_type =
             dst_addr.ss_family == AF_INET6 ? ICMP6_ECHO : ICMP_ECHO;
         request.icmp_code = 0;
@@ -416,7 +416,7 @@ int main(int argc, char **argv)
                             dst_addr_len);
         if (error < 0) {
             psyserror("sendto");
-            return EXIT_FAILURE;
+            goto exit_error;
         }
 
         printf("Sent ICMP echo request to %s\n", dst_addr_str);
@@ -565,7 +565,7 @@ int main(int argc, char **argv)
 
                 if (reply_packet == NULL) {
                     psyserror("malloc");
-                    return EXIT_FAILURE;
+                    goto exit_error;
                 }
 
                 memcpy(&reply_packet->ip6_hdr.src,
@@ -598,5 +598,17 @@ next:
         }
     }
 
+    close_socket(sockfd);
+
     return EXIT_SUCCESS;
+
+exit_error:
+
+    if (addrinfo_list != NULL) {
+        freeaddrinfo(addrinfo_list);
+    }
+
+    close_socket(sockfd);
+
+    return EXIT_FAILURE;
 }
