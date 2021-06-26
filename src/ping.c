@@ -45,7 +45,6 @@ static LPFN_WSARECVMSG WSARecvMsg;
 #include <arpa/inet.h>       /* inet_XtoY() */
 #include <netinet/in.h>      /* IPPROTO_ICMP */
 #include <netinet/ip.h>
-#include <netinet/ip6.h>     /* struct ip6_hdr */
 #include <netinet/ip_icmp.h> /* struct icmp */
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -61,9 +60,6 @@ typedef struct cmsghdr cmsghdr_t;
 #define IP_V4 4
 #define IP_V6 6
 
-#define MIN_IP_HEADER_LENGTH 20
-#define MAX_IP_HEADER_LENGTH 60
-#define IPV6_HEADER_LENGTH 40
 #define ICMP_HEADER_LENGTH 8
 #define MESSAGE_BUFFER_SIZE 1024
 
@@ -121,11 +117,6 @@ struct ip6_pseudo_hdr {
     uint16_t plen;
     uint8_t unused2[3];
     uint8_t nxt;
-};
-
-struct icmp_packet {
-    struct icmp icmp;
-    char data[1];
 };
 
 struct icmp6_packet {
@@ -262,7 +253,7 @@ int main(int argc, char **argv)
     uint64_t start_time;
     uint64_t delay;
 
-    for (i = 0; i < argc; i++) {
+    for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-4") == 0) {
             ip_version = IP_V4;
         } else if (strcmp(argv[i], "-6") == 0) {
@@ -464,7 +455,7 @@ int main(int argc, char **argv)
                 sizeof(packet_info_buf),
                 0
             };
-            size_t msg_len = 0;
+            size_t msg_len;
 #endif
             cmsghdr_t *cmsg;
             size_t ip_hdr_len;
