@@ -16,12 +16,12 @@ Example usage:
 
 ```sh
 $ ./ping google.com
-Sent ICMP echo request to 212.188.10.88
-Received ICMP echo reply from 212.188.10.88: seq=0, time=14.438 ms
-Sent ICMP echo request to 212.188.10.88
-Received ICMP echo reply from 212.188.10.88: seq=1, time=14.125 ms
-Sent ICMP echo request to 212.188.10.88
-Received ICMP echo reply from 212.188.10.88: seq=2, time=13.850 ms
+PING google.com (142.250.74.206)
+Received reply from 142.250.74.206: seq=0, time=103.307 ms
+Received reply from 142.250.74.206: seq=1, time=91.200 ms
+Received reply from 142.250.74.206: seq=2, time=103.080 ms
+Received reply from 142.250.74.206: seq=3, time=94.531 ms
+Received reply from 142.250.74.206: seq=4, time=92.204 ms
 ^C
 ```
 

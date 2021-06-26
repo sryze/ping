@@ -245,8 +245,8 @@ int main(int argc, char **argv)
     socket_t sockfd = -1;
     struct addrinfo *addrinfo_list = NULL;
     struct addrinfo *addrinfo;
-    char dst_addr_str[INET6_ADDRSTRLEN] = "<unknown>";
-    struct sockaddr_storage dst_addr;
+    char addr_str[INET6_ADDRSTRLEN] = "<unknown>";
+    struct sockaddr_storage addr;
     socklen_t dst_addr_len;
     uint16_t id = (uint16_t)getpid();
     uint16_t seq;
@@ -314,7 +314,7 @@ int main(int argc, char **argv)
         goto exit_error;
     }
 
-    memcpy(&dst_addr, addrinfo->ai_addr, addrinfo->ai_addrlen);
+    memcpy(&addr, addrinfo->ai_addr, addrinfo->ai_addrlen);
     dst_addr_len = addrinfo->ai_addrlen;
 
     freeaddrinfo(addrinfo_list);
@@ -344,7 +344,7 @@ int main(int argc, char **argv)
     }
 #endif
 
-    if (dst_addr.ss_family == AF_INET6) {
+    if (addr.ss_family == AF_INET6) {
         /*
          * This allows us to receive IPv6 packet headers in incoming messages.
          */
@@ -367,24 +367,26 @@ int main(int argc, char **argv)
     /*
      * Convert the destination IP-address to a string.
      */
-    inet_ntop(dst_addr.ss_family,
-        dst_addr.ss_family == AF_INET6
-            ? (void *)&((struct sockaddr_in6 *)&dst_addr)->sin6_addr
-            : (void *)&((struct sockaddr_in *)&dst_addr)->sin_addr,
-        dst_addr_str,
-        sizeof(dst_addr_str));
+    inet_ntop(addr.ss_family,
+              addr.ss_family == AF_INET6
+                  ? (void *)&((struct sockaddr_in6 *)&addr)->sin6_addr
+                  : (void *)&((struct sockaddr_in *)&addr)->sin_addr,
+              addr_str,
+              sizeof(addr_str));
+
+    printf("PING %s (%s)\n", hostname, addr_str);
 
     for (seq = 0; ; seq++) {
         struct icmp request;
 
         request.icmp_type =
-            dst_addr.ss_family == AF_INET6 ? ICMP6_ECHO : ICMP_ECHO;
+                addr.ss_family == AF_INET6 ? ICMP6_ECHO : ICMP_ECHO;
         request.icmp_code = 0;
         request.icmp_cksum = 0;
         request.icmp_id = htons(id);
         request.icmp_seq = htons(seq);
 
-        if (dst_addr.ss_family == AF_INET6) {
+        if (addr.ss_family == AF_INET6) {
             /*
              * Checksum is calculated from the ICMPv6 packet prepended
              * with an IPv6 "pseudo-header".
@@ -396,7 +398,7 @@ int main(int argc, char **argv)
 
             request_packet.ip6_hdr.src = in6addr_loopback;
             request_packet.ip6_hdr.dst =
-                ((struct sockaddr_in6 *)&dst_addr)->sin6_addr;
+                ((struct sockaddr_in6 *)&addr)->sin6_addr;
             request_packet.ip6_hdr.plen = htons((uint16_t)ICMP_HEADER_LENGTH);
             request_packet.ip6_hdr.nxt = IPPROTO_ICMPV6;
             request_packet.icmp = request;
@@ -412,14 +414,12 @@ int main(int argc, char **argv)
                             (char *)&request,
                             sizeof(request),
                             0,
-                            (struct sockaddr *)&dst_addr,
+                            (struct sockaddr *)&addr,
                             dst_addr_len);
         if (error < 0) {
             psyserror("sendto");
             goto exit_error;
         }
-
-        printf("Sent ICMP echo request to %s\n", dst_addr_str);
 
         start_time = utime();
 
@@ -496,7 +496,7 @@ int main(int argc, char **argv)
             msg_len = error;
 #endif
 
-            if (dst_addr.ss_family == AF_INET6) {
+            if (addr.ss_family == AF_INET6) {
                 /*
                  * The IP header is not included in the message, msg_buf points
                  * directly to the ICMP data.
@@ -538,10 +538,10 @@ int main(int argc, char **argv)
             /*
              * Verify that this is indeed an echo reply packet.
              */
-            if (!(dst_addr.ss_family == AF_INET
+            if (!(addr.ss_family == AF_INET
                   && reply->icmp_type == ICMP_ECHO_REPLY)
-                && !(dst_addr.ss_family == AF_INET6
-                    && reply->icmp_type == ICMP6_ECHO_REPLY)) {
+                && !(addr.ss_family == AF_INET6
+                     && reply->icmp_type == ICMP6_ECHO_REPLY)) {
                 continue;
             }
 
@@ -559,7 +559,7 @@ int main(int argc, char **argv)
             /*
              * Verify the checksum.
              */
-            if (dst_addr.ss_family == AF_INET6) {
+            if (addr.ss_family == AF_INET6) {
                 size_t size = sizeof(struct ip6_pseudo_hdr) + msg_len;
                 struct icmp6_packet *reply_packet = calloc(1, size);
 
@@ -569,7 +569,7 @@ int main(int argc, char **argv)
                 }
 
                 memcpy(&reply_packet->ip6_hdr.src,
-                       &((struct sockaddr_in6 *)&dst_addr)->sin6_addr,
+                       &((struct sockaddr_in6 *)&addr)->sin6_addr,
                        sizeof(struct in6_addr));
                 reply_packet->ip6_hdr.dst = msg_addr;
                 reply_packet->ip6_hdr.plen = htons((uint16_t)msg_len);
@@ -584,8 +584,8 @@ int main(int argc, char **argv)
                                             msg_len - ip_hdr_len);
             }
 
-            printf("Received ICMP echo reply from %s: seq=%d, time=%.3f ms%s\n",
-                   dst_addr_str,
+            printf("Received reply from %s: seq=%d, time=%.3f ms%s\n",
+                   addr_str,
                    seq,
                    (double)delay / 1000.0,
                    reply_checksum != checksum ? " (bad checksum)" : "");
