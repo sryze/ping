@@ -12,4 +12,5 @@ Thumbs.db
 .vscode
 
 build
+target
 CMakeLists.txt.user*
