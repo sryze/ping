@@ -190,7 +190,7 @@ static void init_winsock_lib(void)
     }
 }
 
-static void init_winsock_extensions(int sockfd)
+static void init_winsock_extensions(socket_t sockfd)
 {
     int error;
     GUID recvmsg_id = WSAID_WSARECVMSG;
@@ -315,7 +315,7 @@ int main(int argc, char **argv)
     }
 
     memcpy(&addr, addrinfo->ai_addr, addrinfo->ai_addrlen);
-    dst_addr_len = addrinfo->ai_addrlen;
+    dst_addr_len = (socklen_t)addrinfo->ai_addrlen;
 
     freeaddrinfo(addrinfo_list);
     addrinfo = NULL;
@@ -415,7 +415,7 @@ int main(int argc, char **argv)
                             sizeof(request),
                             0,
                             (struct sockaddr *)&addr,
-                            dst_addr_len);
+                            (int)dst_addr_len);
         if (error < 0) {
             psyserror("sendto");
             goto exit_error;
