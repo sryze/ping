@@ -2,6 +2,10 @@
     #define _GNU_SOURCE /* for additional type definitions */
 #endif
 
+#ifndef _WIN32_WINNT
+    #define _WIN32_WINNT 0x0601 /* for inet_XtoY functions on MinGW */
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -93,7 +97,7 @@ typedef struct cmsghdr cmsghdr_t;
 
 #if defined _WIN32 || defined __CYGWIN__
 
-#ifdef _MSC_VER
+#if defined _MSC_VER || defined __MINGW32__
     typedef unsigned __int8 uint8_t;
     typedef unsigned __int16 uint16_t;
     typedef unsigned __int32 uint32_t;
@@ -128,7 +132,10 @@ struct icmp6_packet {
 
 #ifdef _WIN32
 
-static void psyserror(const char *s)
+/**
+ * psockerror() is like perror() but for the Windows Sockets API.
+ */
+static void psockerror(const char *s)
 {
     char *message = NULL;
     DWORD format_flags = FORMAT_MESSAGE_FROM_SYSTEM
@@ -154,10 +161,13 @@ static void psyserror(const char *s)
 
 #else /* _WIN32 */
 
-#define psyserror perror
+#define psockerror perror
 
 #endif /* !_WIN32 */
 
+/**
+ * Returns a timestamp with microsecond resolution.
+ */
 static uint64_t utime(void)
 {
 #ifdef _WIN32
@@ -209,7 +219,7 @@ static void init_winsock_extensions(socket_t sockfd)
                      NULL,
                      NULL);
     if (error == SOCKET_ERROR) {
-        psyserror("WSAIoctl");
+        psockerror("WSAIoctl");
         exit(EXIT_FAILURE);
     }
 }
@@ -310,7 +320,7 @@ int main(int argc, char **argv)
     }
 
     if ((int)sockfd < 0) {
-        psyserror("socket");
+        psockerror("socket");
         goto exit_error;
     }
 
@@ -333,16 +343,16 @@ int main(int argc, char **argv)
     {
         u_long opt_value = 1;
         if (ioctlsocket(sockfd, FIONBIO, &opt_value) != 0) {
-            psyserror("ioctlsocket");
+            psockerror("ioctlsocket");
             goto exit_error;
         }
     }
-#else
+#else /* _WIN32 */
     if (fcntl(sockfd, F_SETFL, O_NONBLOCK) == -1) {
-        psyserror("fcntl");
+        psockerror("fcntl");
         goto exit_error;
     }
-#endif
+#endif /* !_WIN32 */
 
     if (addr.ss_family == AF_INET6) {
         /*
@@ -351,7 +361,7 @@ int main(int argc, char **argv)
         int opt_value = 1;
         error = setsockopt(sockfd,
                            IPPROTO_IPV6,
-#ifdef _WIN32
+#if defined _WIN32 || __CYGWIN__
                            IPV6_PKTINFO,
 #else
                            IPV6_RECVPKTINFO,
@@ -359,7 +369,7 @@ int main(int argc, char **argv)
                            (char *)&opt_value,
                            sizeof(opt_value));
         if (error != 0) {
-            psyserror("setsockopt");
+            psockerror("setsockopt");
             goto exit_error;
         }
     }
@@ -417,7 +427,7 @@ int main(int argc, char **argv)
                             (struct sockaddr *)&addr,
                             (int)dst_addr_len);
         if (error < 0) {
-            psyserror("sendto");
+            psockerror("sendto");
             goto exit_error;
         }
 
@@ -441,7 +451,7 @@ int main(int argc, char **argv)
                 0
             };
             DWORD msg_len = 0;
-#else
+#else /* _WIN32 */
             struct iovec msg_buf_struct = {
                 msg_buf,
                 sizeof(msg_buf)
@@ -456,7 +466,7 @@ int main(int argc, char **argv)
                 0
             };
             size_t msg_len;
-#endif
+#endif /* !_WIN32 */
             cmsghdr_t *cmsg;
             size_t ip_hdr_len;
             struct icmp *reply;
@@ -487,7 +497,7 @@ int main(int argc, char **argv)
                         continue;
                     }
                 } else {
-                    psyserror("recvmsg");
+                    psockerror("recvmsg");
                     goto next;
                 }
             }
@@ -564,7 +574,7 @@ int main(int argc, char **argv)
                 struct icmp6_packet *reply_packet = calloc(1, size);
 
                 if (reply_packet == NULL) {
-                    psyserror("malloc");
+                    psockerror("malloc");
                     goto exit_error;
                 }
 
