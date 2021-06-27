@@ -73,5 +73,5 @@ The `scripts` directory contains a couple of scripts to aid debugging:
 * `dump.sh` - prints the contents of `ping.pcap` in a nice form (`tcpdump`
    may actually display helpful errors there, like a miscalculated checksum)
 
-[build]: https://travis-ci.org/sryze/ping
-[build_status]: https://travis-ci.org/sryze/ping.svg?branch=master
+[build]: https://travis-ci.com/sryze/ping
+[build_status]: https://travis-ci.com/sryze/ping.svg?branch=master
