@@ -3,13 +3,16 @@ Thumbs.db
 
 *~
 *.bak
+*.iml
 *.log
 *.pcap
 *.swp
 
+.gdb_history
 .idea
 .vs
 .vscode
+CMakeSettings.json
+CMakeLists.txt.user*
 
 build
-CMakeLists.txt.user*
