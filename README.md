@@ -8,7 +8,7 @@ created for learning more about raw sockets and how ping works (and for fun).
 
 Features:
 
-* Cross-platform: can compile and run on Windows (MSVC, Cygwin), Linux, macOS
+* Cross-platform: can compile and run on Windows, Linux, macOS, *BSD
 * Supports IPv6
 * Displays time with microsecond precision
 
@@ -31,7 +31,7 @@ Building
 --------
 
 To build ping you'll need a C89 compiler and CMake. Supported platforms include
-Linux, Mac OS X and Cygwin.
+Linux, Mac OS X, Windows (MSVC, Cygwin, MinGW), FreeBSD and NetBSD.
 
 After you cloned this repo run the following commands to build an executable:
 
