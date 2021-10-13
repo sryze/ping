@@ -31,7 +31,8 @@ Building
 --------
 
 To build ping you'll need a C89 compiler and CMake. Supported platforms include
-Linux, Mac OS X, Windows (MSVC, Cygwin, MinGW), FreeBSD and NetBSD.
+Linux, Mac OS X, Windows (MSVC, Cygwin, MinGW), FreeBSD, NetBSD, OpenBSD,
+Solaris.
 
 After you cloned this repo run the following commands to build an executable:
 
