@@ -42,14 +42,15 @@ static LPFN_WSARECVMSG WSARecvMsg;
 #endif
 
 #include <errno.h>
-#include <fcntl.h>           /* fcntl() */
-#include <netdb.h>           /* getaddrinfo() */
+#include <fcntl.h>            /* fcntl() */
+#include <netdb.h>            /* getaddrinfo() */
 #include <stdint.h>
 #include <unistd.h>
-#include <arpa/inet.h>       /* inet_XtoY() */
-#include <netinet/in.h>      /* IPPROTO_ICMP */
+#include <arpa/inet.h>        /* inet_XtoY() */
+#include <netinet/in.h>       /* IPPROTO_ICMP */
+#include <netinet/in_systm.h>
 #include <netinet/ip.h>
-#include <netinet/ip_icmp.h> /* struct icmp */
+#include <netinet/ip_icmp.h>  /* struct icmp */
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/types.h>
