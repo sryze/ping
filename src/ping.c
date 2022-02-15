@@ -362,7 +362,7 @@ int main(int argc, char **argv)
         int opt_value = 1;
         error = setsockopt(sockfd,
                            IPPROTO_IPV6,
-#if defined _WIN32 || __CYGWIN__
+#if defined _WIN32 || defined __CYGWIN__
                            IPV6_PKTINFO,
 #else
                            IPV6_RECVPKTINFO,
