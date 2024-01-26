@@ -376,6 +376,22 @@ int main(int argc, char **argv)
     }
 
     /*
+     * As opening raw sockets usually requires superuser privileges, we should
+     * drop them as soon as possible for security reasons.
+     */
+#if !defined _WIN32
+    /* Note: group ID must be set before user ID! */
+    if (setgid(getgid() != 0)) {
+        perror("setgid");
+        goto exit_error;
+    }
+    if (setuid(getuid()) != 0) {
+        perror("setuid");
+        goto exit_error;
+    }
+#endif
+
+    /*
      * Convert the destination IP-address to a string.
      */
     inet_ntop(addr.ss_family,
