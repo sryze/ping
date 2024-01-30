@@ -1,5 +1,5 @@
-project(ping C)
 cmake_minimum_required(VERSION 3.1)
+project(ping C)
 
 add_executable(ping src/ping.c)
 set_target_properties(ping PROPERTIES C_STANDARD 90)
