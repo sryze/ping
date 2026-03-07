@@ -249,6 +249,8 @@ static uint16_t compute_checksum(const char *buf, size_t size)
     return (uint16_t)~sum;
 }
 
+#ifndef _WIN32
+
 static void drop_root_privileges(const char *username)
 {
     struct passwd *pw;
@@ -291,6 +293,8 @@ static void drop_root_privileges(const char *username)
         exit(EXIT_FAILURE);
     }
 }
+
+#endif /* !_WIN32 */
 
 int main(int argc, char **argv)
 {
@@ -424,7 +428,7 @@ int main(int argc, char **argv)
      * As opening raw sockets usually requires superuser privileges, we should
      * drop them as soon as possible for security reasons.
      */
-#if !defined _WIN32
+#ifndef _WIN32
     drop_root_privileges("nobody");
 #endif
 
