@@ -1,6 +1,9 @@
 ping
 ====
 
+> [!WARNING]
+> This project is unmaintained and considered deprecated. No new features or bug fixes will be provided. Users are advised to seek alternative solutions.
+
 This is a rather basic implementation of the `ping` command in C. It was
 created for learning more about raw sockets and how ping works (and for fun).
 
