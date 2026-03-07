@@ -381,7 +381,7 @@ int main(int argc, char **argv)
      */
 #if !defined _WIN32
     /* Note: group ID must be set before user ID! */
-    if (setgid(getgid() != 0)) {
+    if (setgid(getgid()) != 0) {
         perror("setgid");
         goto exit_error;
     }
