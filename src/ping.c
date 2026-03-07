@@ -54,6 +54,8 @@ static LPFN_WSARECVMSG WSARecvMsg;
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <grp.h>
+#include <pwd.h>
 
 typedef int socket_t;
 typedef struct msghdr msghdr_t;
@@ -247,6 +249,49 @@ static uint16_t compute_checksum(const char *buf, size_t size)
     return (uint16_t)~sum;
 }
 
+static void drop_root_privileges(const char *username)
+{
+    struct passwd *pw;
+
+    if (getuid() != 0) {
+        /* Process is not running as root, no privileges to drop. */
+        return;
+    }
+
+    /* Get the user info for the target unprivileged user. */
+    pw = getpwnam(username);
+    if (pw == NULL) {
+        perror("getpwnam");
+        exit(EXIT_FAILURE);
+    }
+
+    /* Update supplemental groups. This must be done before setgid(). */
+    if (initgroups(pw->pw_name, pw->pw_gid) != 0) {
+        perror("initgroups: Unable to set supplemental groups");
+        exit(EXIT_FAILURE);
+    }
+
+    /* Set the real, effective, and saved group IDs. */
+    if (setgid(pw->pw_gid) != 0) {
+        perror("setgid: Unable to drop group privileges");
+        exit(EXIT_FAILURE);
+    }
+
+    /* Set the real, effective, and saved user IDs. */
+    if (setuid(pw->pw_uid) != 0) {
+        perror("setuid: Unable to drop user privileges");
+        exit(EXIT_FAILURE);
+    }
+
+    /* Verification */
+    if (getuid() == pw->pw_uid && geteuid() == pw->pw_uid && getgid() == pw->pw_gid && getegid() == pw->pw_gid) {
+        /* printf("Successfully dropped privileges to user: %s (UID: %d, GID: %d)\n", username, getuid(), getgid()); */
+    } else {
+        fprintf(stderr, "Failed to fully drop privileges");
+        exit(EXIT_FAILURE);
+    }
+}
+
 int main(int argc, char **argv)
 {
     int i;
@@ -380,15 +425,7 @@ int main(int argc, char **argv)
      * drop them as soon as possible for security reasons.
      */
 #if !defined _WIN32
-    /* Note: group ID must be set before user ID! */
-    if (setgid(getgid()) != 0) {
-        perror("setgid");
-        goto exit_error;
-    }
-    if (setuid(getuid()) != 0) {
-        perror("setuid");
-        goto exit_error;
-    }
+    drop_root_privileges("nobody");
 #endif
 
     /*
