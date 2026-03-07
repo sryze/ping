@@ -1,8 +1,6 @@
 ping
 ====
 
-[![Build Status][build_status]][build]
-
 This is a rather basic implementation of the `ping` command in C. It was
 created for learning more about raw sockets and how ping works (and for fun).
 
@@ -12,27 +10,10 @@ Features:
 * Supports IPv6
 * Displays time with microsecond precision
 
-Example usage:
-
-```sh
-$ ./ping google.com
-PING google.com (142.250.74.206)
-Received reply from 142.250.74.206: seq=0, time=103.307 ms
-Received reply from 142.250.74.206: seq=1, time=91.200 ms
-Received reply from 142.250.74.206: seq=2, time=103.080 ms
-Received reply from 142.250.74.206: seq=3, time=94.531 ms
-Received reply from 142.250.74.206: seq=4, time=92.204 ms
-^C
-```
-
-`ping` accepts only one argument - the name of the host to ping.
-
 Building
 --------
 
-To build ping you'll need a C89 compiler and CMake. Supported platforms include
-Linux, Mac OS X, Windows (MSVC, Cygwin, MinGW), FreeBSD, NetBSD, OpenBSD,
-Solaris.
+To build ping you will need a C89 compiler and CMake.
 
 After you cloned this repo run the following commands to build an executable:
 
@@ -46,23 +27,27 @@ make
 Running
 -------
 
-Use of raw sockets usually requires administrative privileges, therefore you
-will need to run `ping` as root:
+Example usage:
 
 ```sh
-sudo ./ping google.com
+$ ./ping google.com
+PING google.com (XXX.XXX.XXX.XXX)
+Received reply from XXX.XXX.XXX.XXX: seq=0, time=103.307 ms
+Received reply from XXX.XXX.XXX.XXX: seq=1, time=91.200 ms
+Received reply from XXX.XXX.XXX.XXX: seq=2, time=103.080 ms
+Received reply from XXX.XXX.XXX.XXX: seq=3, time=94.531 ms
+Received reply from XXX.XXX.XXX.XXX: seq=4, time=92.204 ms
+^C
 ```
 
-There is also a way to make it run without typing `sudo` every time: set the
-`suid` bit on the executable and change its owner to `root`:
+The program will run indefinitely until you interrupt it.
 
-```sh
-sudo chmod +s ./ping
-sudo chown root ./ping
-```
-
-After starting `ping`, it will run indefinitely until you interrupt it, e.g.
-by doing `Ctrl-C` in the terminal.
+Note: the use of raw sockets usually requires administrative privileges. One
+of the ways to overcome this is to use `sudo`. However, running programs as
+root is very dangerous and can potentially damage your system! Also:
+**DO NOT** run random code from the internet as root! You should look into
+other options instead, such as Capabilities on Linux or using a Docker
+container or a VM.
 
 Scripts
 -------
@@ -70,9 +55,6 @@ Scripts
 The `scripts` directory contains a couple of scripts to aid debugging:
 
 * `capture.sh` - captures ICMP traffic with `tcpdump` and saves it to
-  `ping.pcap` (needs to be run as root)
+  `ping.pcap`
 * `dump.sh` - prints the contents of `ping.pcap` in a nice form (`tcpdump`
    may actually display helpful errors there, like a miscalculated checksum)
-
-[build]: https://travis-ci.com/sryze/ping
-[build_status]: https://travis-ci.com/sryze/ping.svg?branch=master
